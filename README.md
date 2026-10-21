@@ -140,6 +140,17 @@ MCP 配置（设备 B）：
 - 项目 id 不再按绝对路径哈希：有 `origin` remote 时用 remote（如 `git:github.com/enoch-lyn/memorybridge`），否则用目录名；同一仓库在不同电脑上会落到同一个 project。
 - 当前是“中心数据库”，没有 op log/冲突副本；并发写同一记忆时仍是最后写入生效。下一阶段做增量同步与冲突队列。
 
+## 本地演示（无 token）
+
+想立刻看界面，可以直接用本地模式（只监听 127.0.0.1，不需要 token）：
+
+```powershell
+python -m membridge --db .\data\membridge-local.db seed
+python -m membridge --db .\data\membridge-local.db hub --host 127.0.0.1 --port 8788
+```
+
+浏览器打开 `http://127.0.0.1:8788/`。控制台默认项目是 `demo`；在「连接」里改成你自己的项目路径即可。数据库在 `data/membridge-local.db`，删除即可重置。
+
 ## Web 控制台
 
 Hub 启动后，浏览器打开：
@@ -148,7 +159,9 @@ Hub 启动后，浏览器打开：
 http://HUB_IP:8787/
 ```
 
-在「连接」页填 Hub 的 `MEMBRIDGE_TOKEN`，保存后即可使用：
+界面按 **Material 3** 设计：导航 rail、tonal surface、filled/tonal/outlined 按钮、明暗主题切换；单文件 HTML/CSS/JS，无 Node 构建、无外部 CDN。
+
+在「连接」页填 Hub 的 `MEMBRIDGE_TOKEN`（本地无 token 模式可留空），保存后即可使用：
 
 ![MemoryBridge Web 控制台](doc/assets/webui.png)
 

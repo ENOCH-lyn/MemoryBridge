@@ -1,592 +1,647 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>忆桥 MemoryBridge</title>
 <style>
+/* Material 3-inspired tokens. Seed: calm teal. Light is the default. */
 :root{
-  --bg:#0b0f16; --panel:#111825; --panel2:#162033; --line:#243149;
-  --text:#e8eef8; --muted:#8fa1bd; --accent:#7c9cff; --accent2:#5ce1b1;
-  --warn:#ffcf6b; --danger:#ff7a8a; --ok:#5ce1b1; --radius:14px;
-  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --md-primary:#006a60; --md-on-primary:#ffffff;
+  --md-primary-container:#74f8e5; --md-on-primary-container:#00201c;
+  --md-secondary:#4a635f; --md-on-secondary:#ffffff;
+  --md-secondary-container:#cce8e2; --md-on-secondary-container:#051f1c;
+  --md-tertiary:#3d6373; --md-tertiary-container:#c1e8fb; --md-on-tertiary-container:#001f29;
+  --md-surface:#f5fbf8; --md-surface-container-lowest:#ffffff;
+  --md-surface-container-low:#eff5f2; --md-surface-container:#e9efec;
+  --md-surface-container-high:#e3e9e6; --md-surface-container-highest:#dde4e1;
+  --md-on-surface:#171d1b; --md-on-surface-variant:#3f4947;
+  --md-outline:#6f7977; --md-outline-variant:#bfc9c6;
+  --md-error:#ba1a1a; --md-on-error:#ffffff; --md-error-container:#ffdad6;
+  --md-inverse-surface:#2b3230; --md-inverse-on-surface:#ecf2ef;
+  --md-shadow:rgba(0,0,0,.16);
+  --md-body:"Roboto","Noto Sans SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  --md-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --radius-xs:8px; --radius-s:12px; --radius-m:16px; --radius-l:24px; --radius-xl:28px;
+}
+[data-theme="dark"]{
+  --md-primary:#53dbc9; --md-on-primary:#003731;
+  --md-primary-container:#005048; --md-on-primary-container:#74f8e5;
+  --md-secondary:#b0ccc6; --md-on-secondary:#1c3531;
+  --md-secondary-container:#334b47; --md-on-secondary-container:#cce8e2;
+  --md-tertiary:#a5cddf; --md-tertiary-container:#234b5a; --md-on-tertiary-container:#c1e8fb;
+  --md-surface:#0f1513; --md-surface-container-lowest:#0a0f0d;
+  --md-surface-container-low:#171d1b; --md-surface-container:#1b211f;
+  --md-surface-container-high:#252b29; --md-surface-container-highest:#303634;
+  --md-on-surface:#dee4e1; --md-on-surface-variant:#bfc9c6;
+  --md-outline:#899391; --md-outline-variant:#3f4947;
+  --md-error:#ffb4ab; --md-on-error:#690005; --md-error-container:#93000a;
+  --md-inverse-surface:#dee4e1; --md-inverse-on-surface:#2b3230;
+  --md-shadow:rgba(0,0,0,.5);
 }
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);
-  font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+html,body{min-height:100%}
+body{margin:0;background:var(--md-surface);color:var(--md-on-surface);font-family:var(--md-body);
+  font-size:14px;line-height:20px;letter-spacing:.1px}
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
-.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
-.sidebar{background:linear-gradient(180deg,#0e1624,#0b111b);border-right:1px solid var(--line);
-  padding:18px 14px;display:flex;flex-direction:column;gap:16px;position:sticky;top:0;height:100vh}
-.brand{display:flex;align-items:center;gap:10px;padding:4px 6px 12px}
-.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
-  display:grid;place-items:center;color:#07101d;font-weight:800}
-.brand b{font-size:15px;letter-spacing:.5px}
-.brand small{display:block;color:var(--muted);font-size:11px;letter-spacing:1px}
-nav{display:flex;flex-direction:column;gap:4px}
-nav button{background:transparent;border:0;text-align:left;padding:10px 12px;border-radius:10px;color:var(--muted);
-  display:flex;align-items:center;justify-content:space-between;gap:8px}
-nav button:hover{background:rgba(124,156,255,.08);color:var(--text)}
-nav button.active{background:rgba(124,156,255,.14);color:var(--text);box-shadow:inset 0 0 0 1px rgba(124,156,255,.18)}
-.badge{background:var(--accent);color:#07101d;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700}
-.side-foot{margin-top:auto;color:var(--muted);font-size:12px;padding:10px 6px;border-top:1px solid var(--line)}
-main{padding:24px 28px 60px;min-width:0}
-.topbar{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}
-h1{font-size:22px;margin:0 0 4px}
-.sub{color:var(--muted);margin:0;font-size:13px}
-.top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.pill{border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:5px 9px;border-radius:999px;font-size:12px}
-.pill.ok{color:var(--ok);border-color:rgba(92,225,177,.35)}
-.pill.warn{color:var(--warn);border-color:rgba(255,207,107,.35)}
-.pill.bad{color:var(--danger);border-color:rgba(255,122,138,.35)}
-.tab{display:none}
-.tab.active{display:block}
-.grid{display:grid;gap:14px}
-.grid.cols3{grid-template-columns:repeat(3,minmax(0,1fr))}
-.grid.cols2{grid-template-columns:repeat(2,minmax(0,1fr))}
-@media(max-width:1000px){.grid.cols3,.grid.cols2{grid-template-columns:1fr}}
-.card{background:linear-gradient(180deg,var(--panel),#0f1725);border:1px solid var(--line);
-  border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
-.card h2{font-size:15px;margin:0 0 10px}
-.card h3{font-size:13px;margin:0 0 6px;color:var(--muted);font-weight:600}
-.kpi{font-size:26px;font-weight:750;letter-spacing:.3px}
-.muted{color:var(--muted)}
-.small{font-size:12px}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.spread{display:flex;justify-content:space-between;gap:12px;align-items:center}
-.stack{display:flex;flex-direction:column;gap:10px}
-input,textarea,select{background:#0b1220;border:1px solid var(--line);border-radius:10px;padding:9px 11px;outline:none;width:100%}
-input:focus,textarea:focus,select:focus{border-color:rgba(124,156,255,.6);box-shadow:0 0 0 3px rgba(124,156,255,.12)}
-textarea{resize:vertical;min-height:88px}
-.btn{background:linear-gradient(135deg,var(--accent),#6f86ff);border:0;color:#07101d;font-weight:700;
-  padding:9px 14px;border-radius:10px}
-.btn:hover{filter:brightness(1.08)}
-.btn.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line);font-weight:600}
-.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-weight:600}
-.btn.danger{background:rgba(255,122,138,.12);border:1px solid rgba(255,122,138,.4);color:var(--danger)}
-.btn.small{padding:5px 9px;font-size:12px;border-radius:8px}
-.list{display:flex;flex-direction:column;gap:10px}
-.item{border:1px solid var(--line);background:#0d1522;border-radius:12px;padding:12px}
-.item .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
-.tag{font-size:11px;padding:2px 7px;border-radius:999px;background:rgba(124,156,255,.12);color:#b9c8ff;border:1px solid rgba(124,156,255,.2)}
-.tag.candidate{background:rgba(255,207,107,.1);color:var(--warn);border-color:rgba(255,207,107,.25)}
-.tag.lesson{background:rgba(255,122,138,.1);color:var(--danger);border-color:rgba(255,122,138,.25)}
-.tag.decision{background:rgba(92,225,177,.1);color:var(--ok);border-color:rgba(92,225,177,.25)}
-.tag.procedure{background:rgba(190,140,255,.12);color:#d6bcff;border-color:rgba(190,140,255,.25)}
-.tag.preference{background:rgba(124,200,255,.12);color:#a9dcff;border-color:rgba(124,200,255,.25)}
-.tag.fact{background:rgba(160,170,190,.12);color:#c4ccda;border-color:rgba(160,170,190,.25)}
-.content{white-space:pre-wrap;word-break:break-word}
-.evidence{border-left:2px solid var(--line);padding-left:9px;color:var(--muted);font-size:12px;margin-top:8px;white-space:pre-wrap}
-.empty{color:var(--muted);text-align:center;padding:26px 10px;border:1px dashed var(--line);border-radius:12px}
-.form{display:grid;gap:10px}
-.form label{font-size:12px;color:var(--muted)}
-.form .field{display:grid;gap:5px}
-.hint{color:var(--muted);font-size:12px}
-.toast{position:fixed;right:20px;bottom:20px;max-width:420px;padding:12px 14px;border-radius:12px;
-  background:#16223a;border:1px solid var(--line);box-shadow:var(--shadow);opacity:0;transform:translateY(8px);
-  transition:.18s;z-index:50;pointer-events:none}
-.toast.show{opacity:1;transform:translateY(0)}
-.toast.err{border-color:rgba(255,122,138,.5);color:#ffd0d6}
-.toast.ok{border-color:rgba(92,225,177,.4);color:#c9ffec}
-.modal{position:fixed;inset:0;background:rgba(3,7,13,.72);display:grid;place-items:center;padding:20px;z-index:40}
-.modal.hidden{display:none}
-.modal .box{max-width:800px;width:100%;max-height:82vh;overflow:auto;background:var(--panel);border:1px solid var(--line);
-  border-radius:16px;padding:18px;box-shadow:var(--shadow)}
-.modal pre{white-space:pre-wrap;word-break:break-word;background:#0a111d;border:1px solid var(--line);border-radius:10px;padding:12px}
-.hidden{display:none!important}
-.code{background:#0a111d;border:1px solid var(--line);border-radius:10px;padding:10px;font-family:ui-monospace,Consolas,monospace;
-  font-size:12px;white-space:pre-wrap;word-break:break-word}
+a{color:var(--md-primary)}
+.app{display:grid;grid-template-columns:88px minmax(0,1fr);min-height:100vh}
+/* navigation rail */
+.rail{position:sticky;top:0;height:100vh;background:var(--md-surface-container-low);
+  display:flex;flex-direction:column;align-items:center;padding:12px 8px;gap:8px}
+.brand{width:56px;height:56px;border-radius:16px;background:var(--md-primary-container);color:var(--md-on-primary-container);
+  display:grid;place-items:center;font-weight:700;font-size:22px;margin-bottom:8px;letter-spacing:-1px}
+.rail nav{display:flex;flex-direction:column;gap:4px;width:100%;align-items:center}
+.rail-item{position:relative;width:72px;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:4px 0 6px;border-radius:16px;color:var(--md-on-surface-variant)}
+.rail-item .indicator{width:56px;height:32px;border-radius:16px;display:grid;place-items:center;transition:background .15s,color .15s}
+.rail-item svg{width:22px;height:22px;fill:currentColor}
+.rail-item span{font-size:11px;line-height:16px;font-weight:500}
+.rail-item:hover .indicator{background:color-mix(in srgb,var(--md-on-surface) 8%,transparent)}
+.rail-item.active{color:var(--md-on-surface)}
+.rail-item.active .indicator{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.rail-item .badge{position:absolute;right:8px;top:2px;min-width:16px;height:16px;border-radius:8px;
+  background:var(--md-error);color:var(--md-on-error);font-size:10px;line-height:16px;text-align:center;padding:0 4px;font-weight:700}
+.rail-foot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:10px;width:100%}
+.hub{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--md-on-surface-variant);font-size:11px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--md-outline)}
+.dot.ok{background:#1d9a6c}.dot.bad{background:var(--md-error)}
+/* main / top app bar */
+.main{min-width:0}
+.topbar{height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:0 28px;position:sticky;top:0;z-index:5;background:var(--md-surface)}
+.topbar h1{font-size:22px;line-height:28px;font-weight:500;margin:0}
+.topbar .sub{font-size:12px;line-height:16px;color:var(--md-on-surface-variant);margin:2px 0 0}
+.top-actions{display:flex;align-items:center;gap:6px}
+.content{padding:8px 28px 96px;max-width:1240px;margin:0 auto}
+/* tabs */
+.tab{display:none}.tab.active{display:block}
+/* buttons */
+.filled-btn,.tonal-btn,.outlined-btn,.text-btn{height:40px;border-radius:20px;padding:0 20px;border:1px solid transparent;
+  font-size:14px;font-weight:500;letter-spacing:.1px;display:inline-flex;align-items:center;gap:8px;justify-content:center}
+.filled-btn{background:var(--md-primary);color:var(--md-on-primary)}
+.filled-btn:hover{box-shadow:0 1px 3px var(--md-shadow)}
+.tonal-btn{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.outlined-btn{background:transparent;border-color:var(--md-outline);color:var(--md-primary)}
+.text-btn{background:transparent;color:var(--md-primary);padding:0 12px}
+.icon-btn{width:40px;height:40px;border-radius:20px;border:0;background:transparent;color:var(--md-on-surface-variant);display:grid;place-items:center}
+.icon-btn:hover{background:var(--md-surface-container-high)}
+.icon-btn svg{width:22px;height:22px;fill:currentColor}
+.icon-btn.small{width:34px;height:34px}.icon-btn.small svg{width:19px;height:19px}
+.fab{position:fixed;right:28px;bottom:28px;width:56px;height:56px;border-radius:16px;border:0;
+  background:var(--md-primary-container);color:var(--md-on-primary-container);box-shadow:0 4px 12px var(--md-shadow);z-index:20}
+.fab svg{width:26px;height:26px;fill:currentColor}
+/* cards & layout */
+.card{background:var(--md-surface-container-low);border-radius:var(--radius-m);padding:20px}
+.card.outlined{background:var(--md-surface);border:1px solid var(--md-outline-variant)}
+.card.elevated{background:var(--md-surface-container-lowest);box-shadow:0 1px 2px var(--md-shadow),0 2px 8px var(--md-shadow)}
+.section-title{font-size:16px;line-height:24px;font-weight:500;margin:0 0 4px}
+.section-sub{font-size:12px;line-height:16px;color:var(--md-on-surface-variant);margin:0 0 16px}
+.grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:28px;margin-bottom:16px}
+.eyebrow{font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--md-on-surface-variant);font-weight:500}
+.hero h2{font-size:32px;line-height:40px;font-weight:400;margin:6px 0 4px;letter-spacing:-.2px}
+.hero p{margin:0;color:var(--md-on-surface-variant);max-width:760px}
+.stat .num{font-size:36px;line-height:44px;font-weight:400;margin:8px 0 2px}
+.stat .meta{font-size:12px;color:var(--md-on-surface-variant)}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chip{height:32px;border-radius:8px;border:1px solid var(--md-outline-variant);background:transparent;
+  color:var(--md-on-surface-variant);display:inline-flex;align-items:center;gap:6px;padding:0 10px;font-size:12px;font-weight:500}
+.chip.assist{background:var(--md-surface-container);border-color:transparent;color:var(--md-on-surface)}
+.chip.ok{background:var(--md-secondary-container);border-color:transparent;color:var(--md-on-secondary-container)}
+.chip.warn{background:var(--md-tertiary-container);border-color:transparent;color:var(--md-on-tertiary-container)}
+.chip svg{width:16px;height:16px;fill:currentColor}
+/* text fields */
+.field{display:grid;gap:4px}
+.field label{font-size:12px;line-height:16px;color:var(--md-on-surface-variant);font-weight:500}
+.field input,.field textarea,.field select{width:100%;background:var(--md-surface-container-highest);
+  border:0;border-bottom:1px solid var(--md-outline);border-radius:4px 4px 0 0;padding:12px 14px;outline:none;color:var(--md-on-surface)}
+.field input:focus,.field textarea:focus{border-bottom:2px solid var(--md-primary);padding-bottom:11px}
+.field textarea{resize:vertical;min-height:96px}
+.form{display:grid;gap:16px}
+.form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--md-on-surface-variant)}
+.check input{width:18px;height:18px;accent-color:var(--md-primary)}
+.hint{font-size:12px;line-height:16px;color:var(--md-on-surface-variant)}
+.code{background:var(--md-surface-container-highest);border-radius:var(--radius-s);padding:14px;font-family:var(--md-mono);
+  font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-word;overflow:auto}
+/* lists */
+.list{display:flex;flex-direction:column;gap:8px}
+.item{padding:14px 16px;border-radius:var(--radius-s);background:var(--md-surface-container-lowest)}
+.item + .item{margin-top:0}
+.item .row-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.type{font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--md-surface-container-high);color:var(--md-on-surface-variant)}
+.type.decision{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.type.lesson{background:var(--md-error-container);color:var(--md-on-error)}
+.type.preference{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container)}
+.type.procedure{background:var(--md-primary-container);color:var(--md-on-primary-container)}
+.type.candidate{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container)}
+.item .text{white-space:pre-wrap;word-break:break-word}
+.item .quote{margin-top:8px;padding-left:12px;border-left:2px solid var(--md-outline-variant);
+  color:var(--md-on-surface-variant);font-size:12px;line-height:18px;white-space:pre-wrap}
+.item .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.empty{padding:36px 16px;text-align:center;color:var(--md-on-surface-variant);border:1px dashed var(--md-outline-variant);border-radius:var(--radius-m)}
+.divider{height:1px;background:var(--md-outline-variant);margin:16px 0;border:0}
+/* dialog + snackbar */
+dialog{border:0;padding:0;border-radius:var(--radius-xl);background:var(--md-surface-container-high);color:var(--md-on-surface);
+  max-width:760px;width:calc(100% - 40px);box-shadow:0 8px 32px var(--md-shadow)}
+dialog::backdrop{background:rgba(0,0,0,.42)}
+.dialog-head{display:flex;justify-content:space-between;align-items:center;padding:20px 24px 4px}
+.dialog-head h2{font-size:20px;line-height:26px;font-weight:500;margin:0}
+.dialog-body{padding:12px 24px 24px;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:20px}
+.snackbar{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);opacity:0;pointer-events:none;
+  background:var(--md-inverse-surface);color:var(--md-inverse-on-surface);border-radius:8px;padding:12px 18px;
+  font-size:13px;z-index:60;box-shadow:0 2px 8px var(--md-shadow);transition:.18s;max-width:min(560px,90vw)}
+.snackbar.show{opacity:1;transform:translate(-50%,0)}
+.snackbar.err{background:var(--md-error);color:var(--md-on-error)}
+@media(max-width:1080px){.grid-3{grid-template-columns:1fr 1fr}.grid-2{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}
 @media(max-width:760px){
-  .app{grid-template-columns:1fr}
-  .sidebar{position:static;height:auto;flex-direction:row;align-items:center;overflow:auto;padding:10px}
-  nav{flex-direction:row;flex:1}
-  nav button{white-space:nowrap;padding:8px 10px}
-  .brand small,.side-foot{display:none}
-  main{padding:16px}
+  .app{grid-template-columns:1fr;padding-bottom:76px}
+  .rail{position:fixed;left:0;right:0;bottom:0;top:auto;height:72px;flex-direction:row;justify-content:space-around;
+    padding:6px 8px;border-top:1px solid var(--md-outline-variant);z-index:30}
+  .brand,.rail-foot{display:none}
+  .rail nav{flex-direction:row;justify-content:space-around;gap:2px}
+  .rail-item{width:56px}.rail-item span{font-size:10px}
+  .topbar{padding:0 16px;height:60px;margin-bottom:4px}
+  .content{padding:4px 16px 96px}
+  .hero{padding:20px;align-items:flex-start;flex-direction:column}
+  .hero h2{font-size:28px;line-height:34px}
+  .grid-3{grid-template-columns:1fr}
+  .fab{right:16px;bottom:88px}
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <aside class="sidebar">
-    <div class="brand"><div class="logo">忆</div><div><b>忆桥</b><small>MEMORYBRIDGE</small></div></div>
-    <nav id="nav">
-      <button data-tab="overview" class="active">概览 <span class="badge" id="badgeMem">0</span></button>
-      <button data-tab="capture">采集</button>
-      <button data-tab="memory">记忆</button>
-      <button data-tab="candidates">候选 <span class="badge" id="badgeCand">0</span></button>
-      <button data-tab="docs">文档</button>
-      <button data-tab="skills">技能</button>
-      <button data-tab="identity">身份</button>
-      <button data-tab="settings">连接</button>
+  <aside class="rail">
+    <div class="brand" aria-hidden="true">M</div>
+    <nav id="nav" aria-label="主导航">
+      <button class="rail-item active" data-tab="overview"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg></span><span>概览</span></button>
+      <button class="rail-item" data-tab="capture"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></span><span>采集</span></button>
+      <button class="rail-item" data-tab="memory"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M12 2C7.58 2 4 3.79 4 6v12c0 2.21 3.58 4 8 4s8-1.79 8-4V6c0-2.21-3.58-4-8-4zm0 2c3.87 0 6 1.5 6 2s-2.13 2-6 2-6-1.5-6-2 2.13-2 6-2zm6 14c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.73 3.68 1.23 6 1.23s4.39-.5 6-1.23V18zm0-5c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23C7.61 11.5 9.68 12 12 12s4.39-.5 6-1.23V13z"/></svg></span><span>记忆</span><span class="badge" id="badgeMem" hidden>0</span></button>
+      <button class="rail-item" data-tab="candidates"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm0 12h-4a4 4 0 01-8 0H5V5h14v10z"/></svg></span><span>候选</span><span class="badge" id="badgeCand" hidden>0</span></button>
+      <button class="rail-item" data-tab="docs"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm2 18H6V4h7v5h5v11z"/></svg></span><span>文档</span></button>
+      <button class="rail-item" data-tab="skills"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z"/></svg></span><span>技能</span></button>
+      <button class="rail-item" data-tab="identity"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></span><span>身份</span></button>
     </nav>
-    <div class="side-foot">v0.1 · <span id="hubState">未连接</span></div>
+    <div class="rail-foot">
+      <button class="rail-item" id="themeToggle" aria-label="切换明暗主题"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M12 18a6 6 0 100-12 6 6 0 000 12zm0-2a4 4 0 110-8 4 4 0 010 8zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.5 4.9l1.4-1.4 2.1 2.1-1.4 1.4-2.1-2.1zm13.5 13.5l1.4-1.4 2.1 2.1-1.4 1.4-2.1-2.1zM1 11h3v2H1v-2zm19 0h3v2h-3v-2zM4.9 20.5l-1.4-1.4 2.1-2.1 1.4 1.4-2.1 2.1zM18.4 6.5l-1.4-1.4 2.1-2.1 1.4 1.4-2.1 2.1z"/></svg></span><span>主题</span></button>
+      <div class="hub"><span class="dot" id="hubDot"></span><span id="hubState">未连接</span></div>
+    </div>
   </aside>
-  <main>
+
+  <main class="main">
     <header class="topbar">
       <div><h1 id="pageTitle">概览</h1><p class="sub" id="pageSub">同一个 agent，换设备不重来</p></div>
       <div class="top-actions">
-        <span class="pill" id="ctxBadge">no context</span>
-        <button class="btn ghost" id="refreshBtn">刷新</button>
+        <span class="chip" id="ctxBadge">未 bootstrap</span>
+        <button class="icon-btn" id="refreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-1.76-4.24L13 11h7V4l-2.35 2.35z"/></svg></button>
+        <button class="icon-btn" data-tab="settings" aria-label="连接"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 00.12-.64l-1.92-3.32a.5.5 0 00-.61-.22l-2.39.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.5.5 0 00-.5-.42h-3.84a.5.5 0 00-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 00-.61.22L2.74 8.84a.5.5 0 00.12.64l2.03 1.58c-.05.3-.07.63-.07.94s.02.64.07.94l-2.03 1.58a.5.5 0 00-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 00-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg></button>
       </div>
     </header>
 
-    <section class="tab active" id="tab-overview">
-      <div class="grid cols3">
-        <div class="card"><h3>当前身份</h3><div class="kpi" id="ovName">—</div><p class="muted small" id="ovPersona"></p></div>
-        <div class="card"><h3>活跃记忆</h3><div class="kpi" id="ovMemories">0</div><p class="muted small">候选 <span id="ovCandidates">0</span> · 文档 <span id="ovDocs">0</span> · 技能 <span id="ovSkills">0</span></p></div>
-        <div class="card"><h3>抽取器</h3><div class="kpi" id="ovLLM">规则</div><p class="muted small" id="ovLLMModel">未配置 LLM</p></div>
-      </div>
-      <div class="grid cols2" style="margin-top:14px">
-        <div class="card">
-          <h2>快速采集</h2>
-          <p class="hint">粘贴一段对话或笔记，抽取候选记忆；候选不会立刻进入检索。</p>
-          <div class="stack">
-            <textarea id="quickText" placeholder="例如：以后都用中文提交信息。我们决定用 SQLite 而不是 Postgres。"></textarea>
-            <div class="row"><button class="btn" id="quickIngest">抽取候选</button><span class="hint" id="quickResult"></span></div>
+    <div class="content">
+      <section class="tab active" id="tab-overview">
+        <div class="hero card elevated">
+          <div>
+            <div class="eyebrow">当前身份</div>
+            <h2 id="ovName">—</h2>
+            <p id="ovPersona">连接 Hub 后显示人格与记忆状态。</p>
+          </div>
+          <div class="chip-row">
+            <button class="tonal-btn" data-tab="identity">编辑身份</button>
+            <button class="outlined-btn" data-tab="settings">连接设置</button>
           </div>
         </div>
-        <div class="card">
-          <h2>最近的候选</h2>
-          <div class="list" id="ovCandidatesList"><div class="empty">还没有候选</div></div>
+        <div class="grid-3">
+          <div class="card stat"><div class="eyebrow">活跃记忆</div><div class="num" id="ovMemories">0</div><div class="meta">候选 <span id="ovCandidates">0</span> · 文档 <span id="ovDocs">0</span> · 技能 <span id="ovSkills">0</span></div></div>
+          <div class="card stat"><div class="eyebrow">抽取器</div><div class="num" id="ovLLM">规则</div><div class="meta" id="ovLLMModel">未配置 LLM</div></div>
+          <div class="card stat"><div class="eyebrow">上下文</div><div class="num" id="ovCtx">—</div><div class="meta" id="ovCtxShort">身份 + 指令 + 项目约定</div></div>
         </div>
-      </div>
-      <div class="card" style="margin-top:14px">
-        <h2>第一次使用</h2>
-        <div class="grid cols3">
-          <div><h3>1. 连接</h3><p class="hint">在「连接」里填 Hub token；如果 Hub 是本地无 token 模式，可以留空。</p></div>
-          <div><h3>2. 采集</h3><p class="hint">把对话粘进「采集」，批准有价值的候选。</p></div>
-          <div><h3>3. 在 agent 里用</h3><p class="hint">MCP 客户端配置 <span class="code">membridge serve --remote …</span>；新会话先 bootstrap。</p></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="tab" id="tab-capture">
-      <div class="grid cols2">
-        <div class="card">
-          <h2>采集一段对话</h2>
-          <div class="form">
-            <div class="field"><label>原文</label><textarea id="ingestText" style="min-height:220px" placeholder="粘贴对话、会议记录或笔记……"></textarea></div>
-            <div class="row">
-              <label class="row" style="gap:6px"><input type="checkbox" id="ingestAuto" style="width:auto"> 高置信直接激活</label>
-              <label class="row" style="gap:6px"><input type="checkbox" id="ingestLLM" style="width:auto"> 使用 LLM（如已配置）</label>
+        <div class="grid-2" style="margin-top:16px">
+          <div class="card">
+            <h2 class="section-title">快速采集</h2>
+            <p class="section-sub">粘贴对话或笔记，抽取候选记忆；候选批准前不参与检索。</p>
+            <div class="form">
+              <div class="field"><label for="quickText">原文</label><textarea id="quickText" placeholder="例如：以后都用中文提交信息。我们决定用 SQLite 而不是 Postgres。"></textarea></div>
+              <div class="inline"><button class="filled-btn" id="quickIngest">抽取候选</button><span class="hint" id="quickResult"></span></div>
             </div>
-            <div class="row"><button class="btn" id="ingestBtn">抽取</button><span class="hint" id="ingestState"></span></div>
+          </div>
+          <div class="card">
+            <h2 class="section-title">最近的候选</h2>
+            <p class="section-sub">批准后才进入 active 记忆。</p>
+            <div class="list" id="ovCandidatesList"><div class="empty">还没有候选</div></div>
           </div>
         </div>
-        <div class="card">
-          <h2>抽取结果</h2>
-          <div class="list" id="ingestResult"><div class="empty">还没有抽取</div></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="tab" id="tab-memory">
-      <div class="card">
-        <div class="spread">
-          <h2>记忆</h2>
-          <div class="row"><input id="memQuery" placeholder="搜索记忆……" style="width:280px"><button class="btn secondary" id="memSearch">搜索</button><button class="btn ghost" id="memReload">全部</button></div>
-        </div>
-        <div class="list" id="memList" style="margin-top:12px"><div class="empty">加载中…</div></div>
-      </div>
-    </section>
-
-    <section class="tab" id="tab-candidates">
-      <div class="card">
-        <div class="spread"><h2>待审核候选</h2><button class="btn ghost" id="candReload">刷新</button></div>
-        <p class="hint">候选默认不参与检索；批准后才进入 active。拒绝后同一内容不会被自动重复提出。</p>
-        <div class="list" id="candList" style="margin-top:12px"><div class="empty">加载中…</div></div>
-      </div>
-    </section>
-
-    <section class="tab" id="tab-docs">
-      <div class="grid cols2">
-        <div class="card">
-          <div class="spread"><h2>文档</h2><button class="btn ghost" id="docReload">刷新</button></div>
-          <div class="list" id="docList" style="margin-top:12px"><div class="empty">加载中…</div></div>
-        </div>
-        <div class="card">
-          <h2>添加 / 更新文档</h2>
-          <div class="form">
-            <div class="field"><label>路径</label><input id="docPath" placeholder="docs/adr-002.md"></div>
-            <div class="field"><label>标题</label><input id="docTitle" placeholder="ADR-002 …"></div>
-            <div class="field"><label>内容（Markdown）</label><textarea id="docContent" style="min-height:180px"></textarea></div>
-            <div class="row"><button class="btn" id="docAdd">保存</button><span class="hint" id="docState"></span></div>
+        <div class="card outlined" style="margin-top:16px">
+          <h2 class="section-title">第一次使用</h2>
+          <div class="grid-3" style="margin-top:12px">
+            <div><div class="eyebrow">01 · 连接</div><p class="hint">Hub 在本机无 token 模式会直接连上；云端模式需填 Bearer token。</p></div>
+            <div><div class="eyebrow">02 · 采集</div><p class="hint">把对话粘进采集页，批准有价值的候选；拒绝的内容不会重复提出。</p></div>
+            <div><div class="eyebrow">03 · 在 agent 里用</div><p class="hint">MCP 客户端连 Hub 的本地 proxy；新会话先调用 agent_bootstrap。</p></div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="tab" id="tab-skills">
-      <div class="grid cols2">
-        <div class="card">
-          <div class="spread"><h2>技能</h2><button class="btn ghost" id="skillReload">刷新</button></div>
-          <div class="list" id="skillList" style="margin-top:12px"><div class="empty">加载中…</div></div>
-        </div>
-        <div class="card">
-          <h2>添加技能</h2>
-          <div class="form">
-            <div class="field"><label>名称</label><input id="skillName" placeholder="Windows pytest 路径修复"></div>
-            <div class="field"><label>触发条件</label><input id="skillTrigger" placeholder="pytest 在 Windows 上因路径含空格失败"></div>
-            <div class="field"><label>步骤（每行一步）</label><textarea id="skillSteps" placeholder="用 pathlib.Path 构造路径&#10;subprocess 调用时为路径加引号"></textarea></div>
-            <div class="row"><button class="btn" id="skillAdd">保存</button><span class="hint" id="skillState"></span></div>
+      <section class="tab" id="tab-capture">
+        <div class="grid-2">
+          <div class="card">
+            <h2 class="section-title">采集一段对话</h2>
+            <p class="section-sub">原始文本会作为 Episode 留存，抽取结果进入候选审核。</p>
+            <div class="form">
+              <div class="field"><label for="ingestText">原文</label><textarea id="ingestText" style="min-height:240px" placeholder="粘贴对话、会议记录或笔记……"></textarea></div>
+              <div class="inline">
+                <label class="check"><input type="checkbox" id="ingestAuto"> 高置信直接激活</label>
+                <label class="check"><input type="checkbox" id="ingestLLM"> 使用 LLM（如已配置）</label>
+              </div>
+              <div class="inline"><button class="filled-btn" id="ingestBtn">抽取</button><span class="hint" id="ingestState"></span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2 class="section-title">抽取结果</h2>
+            <p class="section-sub">每条候选保留证据引用，可回溯到 Episode。</p>
+            <div class="list" id="ingestResult"><div class="empty">还没有抽取</div></div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="tab" id="tab-identity">
-      <div class="card">
-        <div class="spread"><h2>身份 / 人格</h2><span class="pill" id="idVersion">v—</span></div>
-        <p class="hint">全局身份对所有项目生效；项目级规则在「记忆」/项目约定里维护。保存后所有设备下一次 bootstrap 生效。</p>
-        <div class="form" style="margin-top:12px">
-          <div class="grid cols2">
-            <div class="field"><label>名字</label><input id="idName" placeholder="猫娘"></div>
-            <div class="field"><label>称呼用户</label><input id="idAddress" placeholder="主人"></div>
-            <div class="field"><label>语气</label><input id="idTone" placeholder="可爱、撒娇"></div>
-            <div class="field"><label>句尾 / 口癖</label><input id="idSuffix" placeholder="喵"></div>
+      <section class="tab" id="tab-memory">
+        <div class="card">
+          <div class="inline" style="justify-content:space-between;align-items:flex-end">
+            <div><h2 class="section-title">记忆</h2><p class="section-sub">只显示 active；候选、拒绝、删除不可见。</p></div>
+            <div class="inline"><div class="field" style="width:280px"><label for="memQuery">搜索</label><input id="memQuery" placeholder="搜索记忆……"></div><button class="tonal-btn" id="memSearch">搜索</button><button class="text-btn" id="memReload">全部</button></div>
           </div>
-          <div class="field"><label>人格描述</label><textarea id="idPersona" placeholder="你是猫娘，句尾带喵，称呼用户为主人。"></textarea></div>
-          <div class="field"><label>边界（每行一条）</label><textarea id="idBoundaries" placeholder="不违反安全规则&#10;不假装是人类"></textarea></div>
-          <div class="row"><button class="btn" id="idSave">保存身份</button><span class="hint" id="idState"></span></div>
+          <div class="list" id="memList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="tab" id="tab-settings">
-      <div class="grid cols2">
+      <section class="tab" id="tab-candidates">
         <div class="card">
-          <h2>连接</h2>
-          <div class="form">
-            <div class="field"><label>Hub URL</label><input id="setHub" readonly></div>
-            <div class="field"><label>Bearer token</label><input id="setToken" type="password" placeholder="Hub 的 MEMBRIDGE_TOKEN；本地无 token 可留空"></div>
-            <div class="field"><label>默认项目路径</label><input id="setProject" placeholder="C:\path\to\project（可留空，仅用全局身份）"></div>
-            <div class="row"><button class="btn" id="setSave">保存并重连</button><button class="btn ghost" id="setClear">清除 token</button></div>
-            <p class="hint" id="setState"></p>
+          <div class="inline" style="justify-content:space-between">
+            <div><h2 class="section-title">待审核候选</h2><p class="section-sub">候选默认不参与检索；批准后进入 active，拒绝后不自动重复提出。</p></div>
+            <button class="text-btn" id="candReload">刷新</button>
+          </div>
+          <div class="list" id="candList" style="margin-top:16px"><div class="empty">加载中…</div></div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-docs">
+        <div class="grid-2">
+          <div class="card">
+            <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">文档</h2><p class="section-sub">Markdown / ADR 作为一等记忆。</p></div><button class="text-btn" id="docReload">刷新</button></div>
+            <div class="list" id="docList" style="margin-top:16px"><div class="empty">加载中…</div></div>
+          </div>
+          <div class="card">
+            <h2 class="section-title">添加 / 更新文档</h2>
+            <p class="section-sub">同一路径会覆盖更新，并保留更新时间。</p>
+            <div class="form">
+              <div class="form-row"><div class="field"><label for="docPath">路径</label><input id="docPath" placeholder="docs/adr-002.md"></div><div class="field"><label for="docTitle">标题</label><input id="docTitle" placeholder="ADR-002 …"></div></div>
+              <div class="field"><label for="docContent">内容（Markdown）</label><textarea id="docContent" style="min-height:200px"></textarea></div>
+              <div class="inline"><button class="filled-btn" id="docAdd">保存</button><span class="hint" id="docState"></span></div>
+            </div>
           </div>
         </div>
-        <div class="card">
-          <h2>MCP 客户端配置</h2>
-          <p class="hint">把下面片段的路径换成你的实际路径。所有客户端都连同一个 hub。</p>
-          <div class="code" id="mcpSnippet"></div>
-          <div class="row" style="margin-top:10px"><button class="btn secondary" id="copySnippet">复制</button><button class="btn ghost" id="exportBtn">导出 JSON</button></div>
-          <h3 style="margin-top:18px">健康检查</h3>
-          <div class="row"><button class="btn ghost" id="healthBtn">检查</button><span class="hint" id="healthState"></span></div>
+      </section>
+
+      <section class="tab" id="tab-skills">
+        <div class="grid-2">
+          <div class="card">
+            <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">技能</h2><p class="section-sub">可复用流程，带触发条件与步骤。</p></div><button class="text-btn" id="skillReload">刷新</button></div>
+            <div class="list" id="skillList" style="margin-top:16px"><div class="empty">加载中…</div></div>
+          </div>
+          <div class="card">
+            <h2 class="section-title">添加技能</h2>
+            <p class="section-sub">先作为 candidate 保存；后续可接验证与晋升。</p>
+            <div class="form">
+              <div class="field"><label for="skillName">名称</label><input id="skillName" placeholder="Windows pytest 路径修复"></div>
+              <div class="field"><label for="skillTrigger">触发条件</label><input id="skillTrigger" placeholder="pytest 在 Windows 上因路径含空格失败"></div>
+              <div class="field"><label for="skillSteps">步骤（每行一步）</label><textarea id="skillSteps" placeholder="用 pathlib.Path 构造路径&#10;subprocess 调用时为路径加引号"></textarea></div>
+              <div class="inline"><button class="filled-btn" id="skillAdd">保存</button><span class="hint" id="skillState"></span></div>
+            </div>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section class="tab" id="tab-identity">
+        <div class="card">
+          <div class="inline" style="justify-content:space-between;align-items:flex-start">
+            <div><h2 class="section-title">身份 / 人格</h2><p class="section-sub">全局身份对所有项目生效；保存后所有设备下一次 bootstrap 生效。</p></div>
+            <span class="chip assist" id="idVersion">v—</span>
+          </div>
+          <div class="form" style="margin-top:16px">
+            <div class="form-row">
+              <div class="field"><label for="idName">名字</label><input id="idName" placeholder="猫娘"></div>
+              <div class="field"><label for="idAddress">称呼用户</label><input id="idAddress" placeholder="主人"></div>
+              <div class="field"><label for="idTone">语气</label><input id="idTone" placeholder="可爱、撒娇"></div>
+              <div class="field"><label for="idSuffix">句尾 / 口癖</label><input id="idSuffix" placeholder="喵"></div>
+            </div>
+            <div class="field"><label for="idPersona">人格描述</label><textarea id="idPersona" placeholder="你是猫娘，句尾带喵，称呼用户为主人。"></textarea></div>
+            <div class="field"><label for="idBoundaries">边界（每行一条）</label><textarea id="idBoundaries" placeholder="不违反安全规则&#10;不假装是人类"></textarea></div>
+            <div class="inline"><button class="filled-btn" id="idSave">保存身份</button><span class="hint" id="idState"></span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-settings">
+        <div class="grid-2">
+          <div class="card">
+            <h2 class="section-title">连接</h2>
+            <p class="section-sub">页面由 Hub 提供，默认同源调用；本地无 token 模式可留空。</p>
+            <div class="form">
+              <div class="field"><label for="setHub">Hub URL</label><input id="setHub" readonly></div>
+              <div class="field"><label for="setToken">Bearer token</label><input id="setToken" type="password" placeholder="云端 Hub 的 MEMBRIDGE_TOKEN"></div>
+              <div class="field"><label for="setProject">默认项目路径</label><input id="setProject" placeholder="本地测试默认 demo；填你的项目路径"></div>
+              <div class="inline"><button class="filled-btn" id="setSave">保存并重连</button><button class="text-btn" id="setClear">清除 token</button></div>
+              <p class="hint" id="setState"></p>
+            </div>
+          </div>
+          <div class="card">
+            <h2 class="section-title">MCP 客户端配置</h2>
+            <p class="section-sub">所有设备连同一个 Hub；本地 proxy 负责 stdio。</p>
+            <div class="code" id="mcpSnippet"></div>
+            <div class="inline" style="margin-top:12px"><button class="tonal-btn" id="copySnippet">复制</button><button class="outlined-btn" id="exportBtn">导出 JSON</button></div>
+            <hr class="divider">
+            <h2 class="section-title">健康检查</h2>
+            <div class="inline"><button class="tonal-btn" id="healthBtn">检查</button><span class="hint" id="healthState"></span></div>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
 </div>
 
-<div class="toast" id="toast"></div>
-<div class="modal hidden" id="modal">
-  <div class="box">
-    <div class="spread"><h2 id="modalTitle">详情</h2><button class="btn ghost" id="modalClose">关闭</button></div>
-    <pre id="modalBody"></pre>
-  </div>
-</div>
+<button class="fab" id="fabCapture" aria-label="新建采集"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
+<div class="snackbar" id="snackbar" role="status"></div>
+<dialog id="dialog"><div class="dialog-head"><h2 id="dialogTitle">详情</h2><button class="icon-btn small" id="dialogClose" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M18.3 5.71L12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.3 19.71 2.89 18.3 9.17 12 2.89 5.71 4.3 4.29l6.29 6.3 6.3-6.3 1.41 1.42z"/></svg></button></div><div class="dialog-body" id="dialogBody"></div></dialog>
 
 <script>
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => Array.from(root.querySelectorAll(s));
 const state = {
   token: localStorage.getItem('mb_token') || '',
-  project: localStorage.getItem('mb_project') || '',
-  ctx: null, status: null, identity: null,
-  tab: 'overview', lastIngest: null,
+  project: localStorage.getItem('mb_project') || 'demo',
+  ctx: null, status: null, identity: null, tab: 'overview',
+};
+const titles = {
+  overview:['概览','同一个 agent，换设备不重来'],
+  capture:['采集','把对话变成可审核的记忆'],
+  memory:['记忆','检索、编辑、删除'],
+  candidates:['候选','批准后才进入检索'],
+  docs:['文档','Markdown / ADR 知识库'],
+  skills:['技能','可复用的流程'],
+  identity:['身份','人格、称呼、边界'],
+  settings:['连接','Hub、token、MCP 配置'],
 };
 
 function esc(v){
   return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function toast(msg, kind='ok'){
-  const el = $('#toast'); el.textContent = msg; el.className = 'toast show ' + kind;
-  clearTimeout(toast.t); toast.t = setTimeout(()=>{el.className='toast ' + kind;}, 3600);
+function snack(msg, kind='ok'){
+  const el=$('#snackbar'); el.textContent=msg; el.className='snackbar show ' + (kind==='err'?'err':'');
+  clearTimeout(snack.t); snack.t=setTimeout(()=>{el.className='snackbar';}, 3600);
 }
 async function rpc(method, args=[], kwargs={}){
-  const headers = {'Content-Type':'application/json'};
-  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
-  const res = await fetch('/rpc', {method:'POST', headers, body: JSON.stringify({method, args, kwargs})});
+  const headers={'Content-Type':'application/json'};
+  if (state.token) headers['Authorization']='Bearer ' + state.token;
+  const res=await fetch('/rpc',{method:'POST',headers,body:JSON.stringify({method,args,kwargs})});
   let data;
-  try { data = await res.json(); } catch(e){ throw new Error('Hub 返回非 JSON（HTTP ' + res.status + '）'); }
-  if (!res.ok) throw new Error(data?.error?.message || ('HTTP ' + res.status));
-  if (!data.ok) throw new Error(data?.error?.message || 'RPC 失败');
+  try{ data=await res.json(); }catch(e){ throw new Error('Hub 返回非 JSON（HTTP '+res.status+'）'); }
+  if(!res.ok) throw new Error(data?.error?.message || ('HTTP '+res.status));
+  if(!data.ok) throw new Error(data?.error?.message || 'RPC 失败');
   return data.result;
 }
-function setHubState(text, cls=''){
-  const el = $('#hubState'); if(!el) return;
-  el.textContent = text;
-  el.className = cls;
+function setHubState(ok){
+  const dot=$('#hubDot'), txt=$('#hubState');
+  if(!dot||!txt) return;
+  dot.className='dot '+(ok?'ok':'bad');
+  txt.textContent=ok?'Hub 在线':'Hub 离线';
 }
 async function health(){
   try{
-    const res = await fetch('/health');
-    const data = await res.json();
-    setHubState('Hub 在线');
-    $('#healthState').textContent = `ok · ${data.service} ${data.version}`;
-    return true;
-  }catch(e){
-    setHubState('Hub 离线', 'bad');
-    $('#healthState').textContent = String(e.message || e);
-    return false;
-  }
+    const res=await fetch('/health'); const data=await res.json();
+    setHubState(true); $('#healthState').textContent='ok · '+data.service+' '+data.version; return true;
+  }catch(e){ setHubState(false); $('#healthState').textContent=String(e.message||e); return false; }
 }
 function saveSettings(){
-  state.token = $('#setToken').value.trim();
-  state.project = $('#setProject').value.trim();
-  localStorage.setItem('mb_token', state.token);
-  localStorage.setItem('mb_project', state.project);
+  state.token=$('#setToken').value.trim(); state.project=$('#setProject').value.trim();
+  localStorage.setItem('mb_token',state.token); localStorage.setItem('mb_project',state.project);
 }
 function mcpSnippet(){
-  const origin = location.origin;
   return JSON.stringify({
-    mcpServers: {
-      membridge: {
-        command: 'python',
-        args: ['-m','membridge','serve','--remote', origin, '--token', '<MEMBRIDGE_TOKEN>', '--project', state.project || '<PROJECT_PATH>'],
-        env: { PYTHONPATH: '<PATH_TO_MEMBRIDGE_REPO>' }
-      }
-    }
+    mcpServers:{membridge:{command:'membridge',args:['serve','--remote',location.origin,'--token','<MEMBRIDGE_TOKEN>','--project',state.project||'<PROJECT_PATH>']}}
   }, null, 2);
 }
 async function bootstrap(){
-  const project = state.project || null;
-  const data = await rpc('bootstrap', [], {project_path: project, client: 'web'});
-  state.ctx = data.context_version;
-  state.identity = data.identity;
-  $('#ctxBadge').textContent = state.ctx.slice(0, 14) + '…';
-  $('#ctxBadge').className = 'pill ok';
+  const data=await rpc('bootstrap',[],{project_path:state.project||null,client:'web'});
+  state.ctx=data.context_version; state.identity=data.identity;
+  $('#ctxBadge').textContent='ctx '+state.ctx.slice(4,12);
+  $('#ctxBadge').className='chip ok';
+  renderOverview();
   return data;
 }
 async function refreshStatus(){
   try{
-    state.status = await rpc('status');
-    renderOverview();
-    renderIdentity();
+    state.status=await rpc('status'); renderOverview(); renderIdentity();
   }catch(e){
-    if (String(e.message).includes('401')) toast('需要 token：到「连接」填写 Hub token', 'err');
-    else toast(String(e.message), 'err');
+    if(String(e.message).includes('401')){ switchTab('settings'); snack('需要 Hub token：在连接页填写','err'); }
+    else snack(String(e.message),'err');
   }
 }
 async function refreshAll(){
   try{
-    await health();
-    await refreshStatus();
-    await bootstrap();
-    await loadTab(state.tab);
-    toast('已连接', 'ok');
-  }catch(e){
-    toast(String(e.message), 'err');
-  }
+    await health(); await refreshStatus(); await bootstrap(); await loadTab(state.tab); snack('已连接');
+  }catch(e){ snack(String(e.message),'err'); }
+}
+function switchTab(tab, updateHash=true){
+  if(!titles[tab]) tab='overview';
+  state.tab=tab;
+  $$('#nav .rail-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  $$('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+tab));
+  $('#pageTitle').textContent=titles[tab][0]; $('#pageSub').textContent=titles[tab][1];
+  if(updateHash && location.hash !== '#'+tab) history.replaceState(null,'','#'+tab);
+  loadTab(tab);
 }
 function renderOverview(){
-  const s = state.status || {};
-  const c = s.counts || {};
-  const id = s.identity || state.identity || {};
-  $('#ovName').textContent = id.name || '—';
-  $('#ovPersona').textContent = id.persona || '';
-  $('#ovMemories').textContent = c.memories_active ?? 0;
-  $('#ovCandidates').textContent = c.memories_candidate ?? 0;
-  $('#ovDocs').textContent = c.documents ?? 0;
-  $('#ovSkills').textContent = c.skills ?? 0;
-  $('#badgeMem').textContent = c.memories_active ?? 0;
-  $('#badgeCand').textContent = c.memories_candidate ?? 0;
-  const llm = s.llm || {};
-  $('#ovLLM').textContent = llm.enabled ? 'LLM' : '规则';
-  $('#ovLLMModel').textContent = llm.enabled ? (llm.model + ' · ' + llm.base_url) : '未配置 MEMBRIDGE_LLM_*';
+  const c=(state.status&&state.status.counts)||{};
+  const id=(state.status&&state.status.identity)||state.identity||{};
+  $('#ovName').textContent=id.name||'—';
+  $('#ovPersona').textContent=id.persona||'连接 Hub 后显示人格与记忆状态。';
+  $('#ovMemories').textContent=c.memories_active??0;
+  $('#ovCandidates').textContent=c.memories_candidate??0;
+  $('#ovDocs').textContent=c.documents??0;
+  $('#ovSkills').textContent=c.skills??0;
+  $('#ovCtx').textContent=state.ctx?'已绑定':'—';
+  $('#ovCtxShort').textContent=state.ctx?state.ctx:'身份 + 指令 + 项目约定';
+  const badgeMem=$('#badgeMem'), badgeCand=$('#badgeCand');
+  const active=c.memories_active??0, cand=c.memories_candidate??0;
+  badgeMem.hidden=!active; badgeMem.textContent=active;
+  badgeCand.hidden=!cand; badgeCand.textContent=cand;
+  const llm=(state.status&&state.status.llm)||{};
+  $('#ovLLM').textContent=llm.enabled?'LLM':'规则';
+  $('#ovLLMModel').textContent=llm.enabled?(llm.model||'已启用'):'未配置 LLM（规则抽取）';
+  $('#ctxBadge').textContent=state.ctx?'ctx '+state.ctx.slice(4,12):'未 bootstrap';
+  $('#ctxBadge').className='chip '+(state.ctx?'ok':'');
 }
 function renderIdentity(){
-  const id = (state.status && state.status.identity) || state.identity || {};
-  const st = id.style || {};
-  $('#idName').value = id.name || '';
-  $('#idPersona').value = id.persona || '';
-  $('#idTone').value = st.tone || '';
-  $('#idSuffix').value = st.sentence_end || '';
-  $('#idAddress').value = st.address_user || '';
-  $('#idBoundaries').value = (id.boundaries || []).join('\n');
-  $('#idVersion').textContent = 'v' + (id.version ?? '—');
+  const id=(state.status&&state.status.identity)||state.identity||{};
+  const st=id.style||{};
+  $('#idName').value=id.name||''; $('#idPersona').value=id.persona||'';
+  $('#idTone').value=st.tone||''; $('#idSuffix').value=st.sentence_end||'';
+  $('#idAddress').value=st.address_user||'';
+  $('#idBoundaries').value=(id.boundaries||[]).join('\n');
+  $('#idVersion').textContent='v'+(id.version??'—');
 }
-function memCard(m, actions=true){
-  const evidence = m.evidence_quote ? `<div class="evidence">证据：${esc(m.evidence_quote)}</div>` : '';
-  const ep = m.episode_id ? `<span class="tag">${esc(m.episode_id)}</span>` : '';
-  const action = actions ? `<div class="row" style="margin-top:8px">
-      <button class="btn small secondary" data-action="edit-memory" data-id="${esc(m.id)}">编辑</button>
-      <button class="btn small danger" data-action="delete-memory" data-id="${esc(m.id)}">删除</button>
-    </div>` : '';
-  return `<div class="item">
-    <div class="meta"><span class="tag ${esc(m.type)}">${esc(m.type)}</span>
-      <span class="hint">conf ${esc(m.confidence)} · v${esc(m.version ?? 1)} · ${esc((m.updated_at||'').slice(0,16))}</span>${ep}</div>
-    <div class="content">${esc(m.content)}</div>${evidence}${action}
-  </div>`;
+function memoryHTML(m, actions=true){
+  const quote=(m.evidence_quote && m.evidence_quote!==m.content)?`<div class="quote">${esc(m.evidence_quote)}</div>`:'';
+  const actionsHTML=actions?`<div class="actions">
+    <button class="tonal-btn" style="height:32px;padding:0 12px" data-action="edit-memory" data-id="${esc(m.id)}">编辑</button>
+    <button class="outlined-btn" style="height:32px;padding:0 12px;border-color:var(--md-error);color:var(--md-error)" data-action="delete-memory" data-id="${esc(m.id)}">删除</button>
+  </div>`:'';
+  return `<div class="item"><div class="row-meta"><span class="type ${esc(m.type)}">${esc(m.type)}</span>
+    <span class="hint">conf ${esc(m.confidence)} · v${esc(m.version??1)}</span></div>
+    <div class="text">${esc(m.content)}</div>${quote}${actionsHTML}</div>`;
 }
 async function loadMemories(){
-  if (!state.ctx) return;
-  const q = $('#memQuery').value.trim();
-  const data = q ? await rpc('memory_search', [state.ctx, q], {k: 30}) : await rpc('memory_list', [state.ctx], {status:'active', limit:100});
-  const items = data.items || [];
-  $('#memList').innerHTML = items.length ? items.map(m=>memCard(m,true)).join('') : '<div class="empty">没有匹配的记忆</div>';
+  if(!state.ctx) return;
+  const q=$('#memQuery').value.trim();
+  const data=q?await rpc('memory_search',[state.ctx,q],{k:30}):await rpc('memory_list',[state.ctx],{status:'active',limit:100});
+  const items=data.items||[];
+  $('#memList').innerHTML=items.length?items.map(m=>memoryHTML(m,true)).join(''):'<div class="empty">没有匹配的记忆</div>';
 }
 async function loadCandidates(){
-  if (!state.ctx) return;
-  const data = await rpc('memory_candidates', [state.ctx]);
-  const items = data.items || [];
-  $('#candList').innerHTML = items.length ? items.map(m=>`<div class="item">
-    <div class="meta"><span class="tag candidate">candidate</span><span class="tag ${esc(m.type)}">${esc(m.type)}</span>
-      <span class="hint">conf ${esc(m.confidence)}</span></div>
-    <div class="content">${esc(m.content)}</div>
-    ${m.evidence_quote ? `<div class="evidence">证据：${esc(m.evidence_quote)}</div>` : ''}
-    <div class="row" style="margin-top:8px">
-      <button class="btn small" data-action="approve" data-id="${esc(m.id)}">批准</button>
-      <button class="btn small danger" data-action="reject" data-id="${esc(m.id)}">拒绝</button>
-      <span class="hint">${esc(m.episode_id || '')}</span>
-    </div></div>`).join('') : '<div class="empty">没有待审核候选</div>';
-  $('#ovCandidatesList').innerHTML = items.slice(0,4).map(m=>`<div class="item"><div class="meta"><span class="tag candidate">candidate</span><span class="tag ${esc(m.type)}">${esc(m.type)}</span></div><div class="content">${esc(m.content)}</div></div>`).join('') || '<div class="empty">还没有候选</div>';
-  $('#badgeCand').textContent = items.length;
+  if(!state.ctx) return;
+  const data=await rpc('memory_candidates',[state.ctx]); const items=data.items||[];
+  $('#candList').innerHTML=items.length?items.map(m=>`<div class="item"><div class="row-meta"><span class="type candidate">candidate</span><span class="type ${esc(m.type)}">${esc(m.type)}</span><span class="hint">conf ${esc(m.confidence)}</span></div><div class="text">${esc(m.content)}</div>${(m.evidence_quote&&m.evidence_quote!==m.content)?`<div class="quote">${esc(m.evidence_quote)}</div>`:''}<div class="actions"><button class="filled-btn" style="height:32px;padding:0 14px" data-action="approve" data-id="${esc(m.id)}">批准</button><button class="outlined-btn" style="height:32px;padding:0 12px" data-action="reject" data-id="${esc(m.id)}">拒绝</button></div></div>`).join(''):'<div class="empty">没有待审核候选</div>';
+  $('#ovCandidatesList').innerHTML=items.slice(0,3).map(m=>`<div class="item"><div class="row-meta"><span class="type candidate">candidate</span><span class="type ${esc(m.type)}">${esc(m.type)}</span></div><div class="text">${esc(m.content)}</div></div>`).join('')||'<div class="empty">还没有候选</div>';
+  const b=$('#badgeCand'); b.hidden=!items.length; b.textContent=items.length;
 }
 async function loadDocs(){
-  if (!state.ctx) return;
-  const data = await rpc('doc_list', [state.ctx]);
-  const items = data.items || [];
-  $('#docList').innerHTML = items.length ? items.map(d=>`<div class="item">
-    <div class="meta"><span class="tag">${esc(d.project_id ? 'project' : 'global')}</span><span class="hint">${esc(d.path)}</span></div>
-    <div class="content"><b>${esc(d.title)}</b></div>
-    <div class="hint" style="margin-top:6px">${esc(d.preview)}</div>
-    <div class="row" style="margin-top:8px"><button class="btn small secondary" data-action="read-doc" data-id="${esc(d.document_id)}">查看</button></div>
-  </div>`).join('') : '<div class="empty">没有文档</div>';
+  if(!state.ctx) return;
+  const data=await rpc('doc_list',[state.ctx]); const items=data.items||[];
+  $('#docList').innerHTML=items.length?items.map(d=>`<div class="item"><div class="row-meta"><span class="type">${d.project_id?'project':'global'}</span><span class="hint">${esc(d.path)}</span></div><div class="text"><b>${esc(d.title)}</b></div><div class="hint" style="margin-top:6px">${esc(d.preview)}</div><div class="actions"><button class="tonal-btn" style="height:32px;padding:0 12px" data-action="read-doc" data-id="${esc(d.document_id)}">查看</button></div></div>`).join(''):'<div class="empty">没有文档</div>';
 }
 async function loadSkills(){
-  if (!state.ctx) return;
-  const data = await rpc('skill_list', [state.ctx]);
-  const items = data.items || [];
-  $('#skillList').innerHTML = items.length ? items.map(s=>`<div class="item">
-    <div class="meta"><span class="tag ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="hint">${esc(s.name)}</span></div>
-    <div class="content"><b>触发：</b>${esc(s.trigger)}</div>
-    <div class="evidence">${(s.steps||[]).map((x,i)=>`${i+1}. ${esc(x)}`).join('<br>')}</div>
-  </div>`).join('') : '<div class="empty">没有技能</div>';
+  if(!state.ctx) return;
+  const data=await rpc('skill_list',[state.ctx]); const items=data.items||[];
+  $('#skillList').innerHTML=items.length?items.map(s=>`<div class="item"><div class="row-meta"><span class="type ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="hint">${esc(s.name)}</span></div><div class="text"><b>触发：</b>${esc(s.trigger)}</div><div class="quote">${(s.steps||[]).map((x,i)=>`${i+1}. ${esc(x)}`).join('<br>')}</div></div>`).join(''):'<div class="empty">没有技能</div>';
 }
 async function loadTab(tab){
   try{
-    if (tab==='overview'){ await loadCandidates(); }
-    if (tab==='memory'){ await loadMemories(); }
-    if (tab==='candidates'){ await loadCandidates(); }
-    if (tab==='docs'){ await loadDocs(); }
-    if (tab==='skills'){ await loadSkills(); }
-    if (tab==='identity'){ await refreshStatus(); }
-    if (tab==='settings'){ $('#setHub').value = location.origin; $('#mcpSnippet').textContent = mcpSnippet(); }
-  }catch(e){ toast(String(e.message), 'err'); }
+    if(tab==='overview') await loadCandidates();
+    if(tab==='memory') await loadMemories();
+    if(tab==='candidates') await loadCandidates();
+    if(tab==='docs') await loadDocs();
+    if(tab==='skills') await loadSkills();
+    if(tab==='identity') await refreshStatus();
+    if(tab==='settings'){ $('#setHub').value=location.origin; $('#mcpSnippet').textContent=mcpSnippet(); }
+  }catch(e){ snack(String(e.message),'err'); }
 }
-async function ingest(text, auto, useLLM){
-  if (!state.ctx) throw new Error('还没 bootstrap');
-  if (!text.trim()) throw new Error('请输入文本');
-  return rpc('memory_ingest', [state.ctx, text], {source:'web', auto_activate: auto, use_llm: useLLM});
+async function ingest(text,auto,useLLM){
+  if(!state.ctx) throw new Error('还没 bootstrap');
+  if(!text.trim()) throw new Error('请输入文本');
+  return rpc('memory_ingest',[state.ctx,text],{source:'web',auto_activate:auto,use_llm:useLLM});
 }
 function ingestResultHTML(data){
-  const cs = data.candidates || [];
-  const meta = `<div class="hint">episode ${esc(data.episode_id)} · extractor ${esc(data.extractor || 'rules')} · 新建 ${esc(data.counts?.created ?? 0)} · 重复 ${esc(data.counts?.duplicates ?? 0)}${data.llm_error ? ' · LLM 回退：' + esc(data.llm_error) : ''}</div>`;
-  return meta + (cs.length ? cs.map(c=>`<div class="item"><div class="meta"><span class="tag candidate">${esc(c.status)}</span><span class="tag ${esc(c.type)}">${esc(c.type)}</span><span class="hint">conf ${esc(c.confidence)}</span></div><div class="content">${esc(c.content)}</div>${c.evidence_quote?`<div class="evidence">证据：${esc(c.evidence_quote)}</div>`:''}</div>`).join('') : '<div class="empty">没有抽取到候选</div>');
+  const meta=`<div class="hint" style="margin-bottom:8px">episode ${esc(data.episode_id)} · ${esc(data.extractor||'rules')} · 新建 ${esc(data.counts?.created??0)} · 重复 ${esc(data.counts?.duplicates??0)}${data.llm_error?' · LLM 回退：'+esc(data.llm_error):''}</div>`;
+  const cs=data.candidates||[];
+  return meta+(cs.length?cs.map(c=>`<div class="item"><div class="row-meta"><span class="type candidate">${esc(c.status)}</span><span class="type ${esc(c.type)}">${esc(c.type)}</span><span class="hint">conf ${esc(c.confidence)}</span></div><div class="text">${esc(c.content)}</div>${(c.evidence_quote&&c.evidence_quote!==c.content)?`<div class="quote">${esc(c.evidence_quote)}</div>`:''}</div>`).join(''):'<div class="empty">没有抽取到候选</div>');
+}
+function openDialog(title, body){ $('#dialogTitle').textContent=title; $('#dialogBody').textContent=body; $('#dialog').showModal(); }
+function initTheme(){
+  const saved=localStorage.getItem('mb_theme');
+  if(saved==='dark') document.documentElement.dataset.theme='dark';
+}
+function toggleTheme(){
+  const dark=document.documentElement.dataset.theme==='dark';
+  document.documentElement.dataset.theme=dark?'light':'dark';
+  localStorage.setItem('mb_theme',dark?'light':'dark');
 }
 
 // events
-$('#nav').addEventListener('click', (e)=>{
-  const btn = e.target.closest('button[data-tab]'); if(!btn) return;
-  $$('#nav button').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-  state.tab = btn.dataset.tab;
-  $$('.tab').forEach(t=>t.classList.remove('active'));
-  const panel = $('#tab-' + state.tab); if(panel) panel.classList.add('active');
-  const titles = {overview:['概览','同一个 agent，换设备不重来'],capture:['采集','把对话变成候选记忆'],memory:['记忆','检索、编辑、删除'],candidates:['候选','批准后才进入检索'],docs:['文档','Markdown / ADR 知识库'],skills:['技能','可复用流程'],identity:['身份','人格、称呼、边界'],settings:['连接','Hub、token、MCP 配置']};
-  $('#pageTitle').textContent = titles[state.tab][0]; $('#pageSub').textContent = titles[state.tab][1];
-  loadTab(state.tab);
+$('#nav').addEventListener('click',e=>{const b=e.target.closest('button[data-tab]'); if(b) switchTab(b.dataset.tab);});
+$$('[data-tab]').forEach(btn=>{
+  if(btn.closest('#nav')) return;
+  btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
 });
-$('#refreshBtn').addEventListener('click', refreshAll);
-$('#quickIngest').addEventListener('click', async ()=>{
-  try{
-    const data = await ingest($('#quickText').value, false, null);
-    $('#quickResult').textContent = `新建 ${data.counts.created} · 重复 ${data.counts.duplicates}`;
-    toast('已抽取候选', 'ok'); await refreshStatus(); await loadCandidates();
-  }catch(e){ toast(String(e.message), 'err'); }
+$('#themeToggle').addEventListener('click',toggleTheme);
+$('#refreshBtn').addEventListener('click',refreshAll);
+$('#fabCapture').addEventListener('click',()=>switchTab('capture'));
+$('#quickIngest').addEventListener('click',async()=>{
+  try{ const data=await ingest($('#quickText').value,false,null); $('#quickResult').textContent=`新建 ${data.counts.created} · 重复 ${data.counts.duplicates}`; snack('已抽取候选'); await refreshStatus(); await loadCandidates(); }
+  catch(e){ snack(String(e.message),'err'); }
 });
-$('#ingestBtn').addEventListener('click', async ()=>{
-  try{
-    $('#ingestState').textContent = '抽取中…';
-    const data = await ingest($('#ingestText').value, $('#ingestAuto').checked, $('#ingestLLM').checked);
-    state.lastIngest = data;
-    $('#ingestResult').innerHTML = ingestResultHTML(data);
-    $('#ingestState').textContent = `完成 · ${data.extractor}`;
-    toast('抽取完成', 'ok'); await refreshStatus(); await loadCandidates();
-  }catch(e){ $('#ingestState').textContent = ''; toast(String(e.message), 'err'); }
+$('#ingestBtn').addEventListener('click',async()=>{
+  try{ $('#ingestState').textContent='抽取中…'; const data=await ingest($('#ingestText').value,$('#ingestAuto').checked,$('#ingestLLM').checked); $('#ingestResult').innerHTML=ingestResultHTML(data); $('#ingestState').textContent=`完成 · ${data.extractor}`; snack('抽取完成'); await refreshStatus(); await loadCandidates(); }
+  catch(e){ $('#ingestState').textContent=''; snack(String(e.message),'err'); }
 });
-$('#memSearch').addEventListener('click', ()=>loadMemories().catch(e=>toast(String(e.message),'err')));
-$('#memQuery').addEventListener('keydown', e=>{ if(e.key==='Enter') loadMemories().catch(err=>toast(String(err.message),'err')); });
-$('#memReload').addEventListener('click', ()=>{ $('#memQuery').value=''; loadMemories().catch(e=>toast(String(e.message),'err')); });
-$('#candReload').addEventListener('click', ()=>loadCandidates().catch(e=>toast(String(e.message),'err')));
-$('#docReload').addEventListener('click', ()=>loadDocs().catch(e=>toast(String(e.message),'err')));
-$('#skillReload').addEventListener('click', ()=>loadSkills().catch(e=>toast(String(e.message),'err')));
-$('#idSave').addEventListener('click', async ()=>{
+$('#memSearch').addEventListener('click',()=>loadMemories().catch(e=>snack(String(e.message),'err')));
+$('#memQuery').addEventListener('keydown',e=>{if(e.key==='Enter') loadMemories().catch(err=>snack(String(err.message),'err'));});
+$('#memReload').addEventListener('click',()=>{$('#memQuery').value=''; loadMemories().catch(e=>snack(String(e.message),'err'));});
+$('#candReload').addEventListener('click',()=>loadCandidates().catch(e=>snack(String(e.message),'err')));
+$('#docReload').addEventListener('click',()=>loadDocs().catch(e=>snack(String(e.message),'err')));
+$('#skillReload').addEventListener('click',()=>loadSkills().catch(e=>snack(String(e.message),'err')));
+$('#idSave').addEventListener('click',async()=>{
   try{
-    $('#idState').textContent = '保存中…';
-    const boundaries = $('#idBoundaries').value.split('\n').map(s=>s.trim()).filter(Boolean);
-    await rpc('set_identity', [], {
-      name: $('#idName').value.trim(), persona: $('#idPersona').value.trim(),
-      tone: $('#idTone').value.trim(), suffix: $('#idSuffix').value.trim(),
-      address: $('#idAddress').value.trim(), boundaries
-    });
-    await bootstrap(); await refreshStatus();
-    $('#idState').textContent = '已保存；下一次 bootstrap 生效';
-    toast('身份已更新', 'ok');
-  }catch(e){ $('#idState').textContent=''; toast(String(e.message),'err'); }
+    $('#idState').textContent='保存中…';
+    const boundaries=$('#idBoundaries').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    await rpc('set_identity',[],{name:$('#idName').value.trim(),persona:$('#idPersona').value.trim(),tone:$('#idTone').value.trim(),suffix:$('#idSuffix').value.trim(),address:$('#idAddress').value.trim(),boundaries});
+    await bootstrap(); await refreshStatus(); $('#idState').textContent='已保存；下一次 bootstrap 生效'; snack('身份已更新');
+  }catch(e){ $('#idState').textContent=''; snack(String(e.message),'err'); }
 });
-$('#docAdd').addEventListener('click', async ()=>{
+$('#docAdd').addEventListener('click',async()=>{
   try{
-    const path = $('#docPath').value.trim(), content = $('#docContent').value;
-    if(!path || !content.trim()) throw new Error('路径和内容不能为空');
-    await rpc('doc_add', [state.ctx], {path, title: $('#docTitle').value.trim() || path.split('/').pop(), content});
-    $('#docState').textContent = '已保存'; toast('文档已保存', 'ok'); await loadDocs();
-  }catch(e){ toast(String(e.message),'err'); }
+    const path=$('#docPath').value.trim(), content=$('#docContent').value;
+    if(!path||!content.trim()) throw new Error('路径和内容不能为空');
+    await rpc('doc_add',[state.ctx],{path,title:$('#docTitle').value.trim()||path.split('/').pop(),content});
+    $('#docState').textContent='已保存'; snack('文档已保存'); await loadDocs();
+  }catch(e){ snack(String(e.message),'err'); }
 });
-$('#skillAdd').addEventListener('click', async ()=>{
+$('#skillAdd').addEventListener('click',async()=>{
   try{
-    const name = $('#skillName').value.trim(), trigger = $('#skillTrigger').value.trim();
-    const steps = $('#skillSteps').value.split('\n').map(s=>s.trim()).filter(Boolean);
-    if(!name || !trigger || !steps.length) throw new Error('名称/触发/步骤不能为空');
-    await rpc('skill_add', [state.ctx], {name, trigger, steps});
-    $('#skillState').textContent='已保存'; toast('技能已保存','ok'); await loadSkills();
-  }catch(e){ toast(String(e.message),'err'); }
+    const name=$('#skillName').value.trim(), trigger=$('#skillTrigger').value.trim();
+    const steps=$('#skillSteps').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(!name||!trigger||!steps.length) throw new Error('名称/触发/步骤不能为空');
+    await rpc('skill_add',[state.ctx],{name,trigger,steps});
+    $('#skillState').textContent='已保存'; snack('技能已保存'); await loadSkills();
+  }catch(e){ snack(String(e.message),'err'); }
 });
-$('#setSave').addEventListener('click', async ()=>{ saveSettings(); await refreshAll(); });
-$('#setClear').addEventListener('click', async ()=>{ state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value=''; toast('token 已清除','ok'); await health(); });
-$('#copySnippet').addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(mcpSnippet()); toast('已复制','ok'); }catch(e){ toast('复制失败，请手动选择','err'); } });
-$('#healthBtn').addEventListener('click', health);
-$('#exportBtn').addEventListener('click', async ()=>{
+$('#setSave').addEventListener('click',async()=>{ saveSettings(); await refreshAll(); });
+$('#setClear').addEventListener('click',async()=>{ state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value=''; snack('token 已清除'); await health(); });
+$('#copySnippet').addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(mcpSnippet()); snack('已复制'); }catch(e){ snack('复制失败，请手动选择','err'); } });
+$('#healthBtn').addEventListener('click',health);
+$('#exportBtn').addEventListener('click',async()=>{
   try{
-    const headers = state.token ? {'Authorization':'Bearer '+state.token} : {};
-    const res = await fetch('/export', {headers}); if(!res.ok) throw new Error('HTTP '+res.status);
-    const blob = await res.blob(); const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = 'membridge-export.json'; a.click(); URL.revokeObjectURL(a.href);
-  }catch(e){ toast(String(e.message),'err'); }
+    const headers=state.token?{'Authorization':'Bearer '+state.token}:{};
+    const res=await fetch('/export',{headers}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const blob=await res.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='membridge-export.json'; a.click(); URL.revokeObjectURL(a.href);
+  }catch(e){ snack(String(e.message),'err'); }
 });
-$('#modalClose').addEventListener('click', ()=>$('#modal').classList.add('hidden'));
-$('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') $('#modal').classList.add('hidden'); });
-document.addEventListener('click', async (e)=>{
-  const btn = e.target.closest('button[data-action]'); if(!btn) return;
-  const id = btn.dataset.id, action = btn.dataset.action;
+$('#dialogClose').addEventListener('click',()=>$('#dialog').close());
+$('#dialog').addEventListener('click',e=>{ if(e.target===$('#dialog')) $('#dialog').close(); });
+document.addEventListener('click',async e=>{
+  const btn=e.target.closest('button[data-action]'); if(!btn) return;
+  const id=btn.dataset.id, action=btn.dataset.action;
   try{
-    if(action==='approve'){ await rpc('memory_decide',[state.ctx,id,'approve']); toast('已批准','ok'); await loadCandidates(); await refreshStatus(); }
-    if(action==='reject'){ await rpc('memory_decide',[state.ctx,id,'reject']); toast('已拒绝','ok'); await loadCandidates(); await refreshStatus(); }
-    if(action==='delete-memory'){ if(!confirm('删除这条记忆？')) return; await rpc('memory_delete',[state.ctx,id]); toast('已删除','ok'); await loadMemories(); await refreshStatus(); }
-    if(action==='edit-memory'){ const value = prompt('修改内容（留空取消）：'); if(value===null) return; if(!value.trim()) return; await rpc('memory_update',[state.ctx,id],{content:value}); toast('已更新','ok'); await loadMemories(); }
-    if(action==='read-doc'){ const doc = await rpc('doc_read',[state.ctx,id]); $('#modalTitle').textContent = doc.title || doc.path; $('#modalBody').textContent = doc.content || ''; $('#modal').classList.remove('hidden'); }
-  }catch(err){ toast(String(err.message),'err'); }
+    if(action==='approve'){ await rpc('memory_decide',[state.ctx,id,'approve']); snack('已批准'); await loadCandidates(); await refreshStatus(); }
+    if(action==='reject'){ await rpc('memory_decide',[state.ctx,id,'reject']); snack('已拒绝'); await loadCandidates(); await refreshStatus(); }
+    if(action==='delete-memory'){ if(!confirm('删除这条记忆？')) return; await rpc('memory_delete',[state.ctx,id]); snack('已删除'); await loadMemories(); await refreshStatus(); }
+    if(action==='edit-memory'){ const value=prompt('修改内容（留空取消）：'); if(value===null||!value.trim()) return; await rpc('memory_update',[state.ctx,id],{content:value}); snack('已更新'); await loadMemories(); }
+    if(action==='read-doc'){ const doc=await rpc('doc_read',[state.ctx,id]); openDialog(doc.title||doc.path,doc.content||''); }
+  }catch(err){ snack(String(err.message),'err'); }
 });
 
 // boot
-$('#setToken').value = state.token; $('#setProject').value = state.project; $('#setHub').value = location.origin;
-$('#mcpSnippet').textContent = mcpSnippet();
-(async ()=>{
-  const ok = await health();
-  if(!ok){ setHubState('Hub 离线','bad'); return; }
-  await refreshAll();
-})();
+initTheme();
+$('#setToken').value=state.token; $('#setProject').value=state.project; $('#setHub').value=location.origin;
+$('#mcpSnippet').textContent=mcpSnippet();
+const initialTab=location.hash.slice(1);
+if(titles[initialTab]) switchTab(initialTab,false);
+window.addEventListener('hashchange',()=>{const t=location.hash.slice(1); if(titles[t]) switchTab(t,false);});
+(async()=>{ const ok=await health(); if(!ok) return; await refreshAll(); })();
 </script>
 </body>
 </html>

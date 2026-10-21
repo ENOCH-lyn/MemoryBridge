@@ -597,7 +597,7 @@ class AgentSyncService:
                 float(confidence),
                 source,
                 episode_id,
-                evidence_quote or content.strip(),
+                evidence_quote,
                 digest,
                 now,
                 now,

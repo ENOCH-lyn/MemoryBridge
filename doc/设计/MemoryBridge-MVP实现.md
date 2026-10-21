@@ -113,7 +113,7 @@ memory_delete(ctx, id)       # 软删除 + deleted_at
 
 ### 6.2 Web 控制台
 
-Hub 在 `GET /` 直接返回 `webui.html`（单文件 HTML/CSS/JS，无构建、无 CDN）：
+Hub 在 `GET /` 直接返回 `webui.html`（单文件 HTML/CSS/JS，无构建、无 CDN）。界面按 Material 3 设计：导航 rail、tonal surface、filled/tonal/outlined 按钮、明暗主题、snackbar/dialog；不是营销落地页，而是操作控制台。
 
 - 概览：身份、活跃记忆/候选/文档/技能、LLM 状态、快速采集。
 - 采集：文本 → `memory_ingest`，展示 extractor/候选/证据。

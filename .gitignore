@@ -28,6 +28,7 @@ build/
 *.db
 *.db-wal
 *.db-shm
+data/
 
 # Node
 node_modules/
