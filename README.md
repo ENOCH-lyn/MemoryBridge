@@ -223,7 +223,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 25 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote）、context 失效、猫娘人格、Episode/抽取/审核/去重/更新/删除、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权。
+当前 26 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote）、context 失效、猫娘人格、Episode/抽取/审核/去重/更新/删除、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 ingest/review。
 
 ## 文档
 
