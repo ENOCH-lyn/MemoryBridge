@@ -1,0 +1,34 @@
+# 操作系统
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 密钥与本地配置
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+.local/
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+.next/
+coverage/
+
+# 运行产物
+tmp/
+*.log
+*.tmp
+~$*
