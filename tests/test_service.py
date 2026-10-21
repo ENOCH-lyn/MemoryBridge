@@ -114,6 +114,8 @@ class ServiceTest(unittest.TestCase):
         payload = self.svc.export_data()
         self.assertEqual(payload["format"], "membridge-export-v1")
         self.assertGreater(len(payload["memories"]), 0)
+        self.assertTrue(payload["skill_files"])
+        self.assertTrue(any("SKILL.md" in files for files in payload["skill_files"].values()))
         # Import into a second database; ids must not collide.
         with tempfile.TemporaryDirectory() as other:
             other_svc = AgentSyncService(Path(other) / "other.db")
@@ -121,6 +123,9 @@ class ServiceTest(unittest.TestCase):
                 result = other_svc.import_data(payload)
                 self.assertGreater(result["imported"], 0)
                 self.assertEqual(other_svc.get_identity()["name"], self.svc.get_identity()["name"])
+                ctx = other_svc.bootstrap(project_path="demo")["context_version"]
+                skills = other_svc.skill_list(ctx)["items"]
+                self.assertTrue(any(skill["file_count"] >= 2 for skill in skills))
             finally:
                 other_svc.close()
 

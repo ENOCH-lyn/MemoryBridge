@@ -1411,6 +1411,18 @@ class AgentSyncService:
         data: dict[str, Any] = {"format": "membridge-export-v1", "exported_at": utcnow()}
         for table in ("identity", "projects", "directives", "episodes", "memories", "documents", "skills"):
             data[table] = [dict(r) for r in self.conn.execute(f"SELECT * FROM {table}").fetchall()]
+        skill_files: dict[str, dict[str, str]] = {}
+        for row in data.get("skills", []):
+            skill_id = row.get("id")
+            if not skill_id:
+                continue
+            files = {}
+            for item in self._skill_files(skill_id):
+                target = self._skill_dir(skill_id) / item["path"]
+                files[item["path"]] = target.read_text(encoding="utf-8")
+            if files:
+                skill_files[skill_id] = files
+        data["skill_files"] = skill_files
         return data
 
     def import_data(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1443,6 +1455,14 @@ class AgentSyncService:
             for row in rows:
                 self.conn.execute(sql, [row.get(c) for c in columns])
                 imported += 1
+        for skill_id, files in (payload.get("skill_files") or {}).items():
+            if not isinstance(files, dict) or not files:
+                continue
+            written = self._write_skill_files(skill_id, files)
+            self.conn.execute(
+                "UPDATE skills SET dir_path = ?, file_count = ? WHERE id = ?",
+                (skill_id, len(written), skill_id),
+            )
         self._audit("import", None, {"imported": imported})
         self.conn.commit()
         return {"imported": imported}
