@@ -18,16 +18,18 @@ PROTOCOL_VERSION = "2025-11-25"
 SUPPORTED_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 
 INSTRUCTIONS = (
-    "MemoryBridge is the user's portable agent identity, memory and capability service. "
+    "MemoryBridge is the user's portable agent identity, memory, document and capability service. "
     "At the start of EVERY new conversation, before answering or using any other MemoryBridge tool, "
     "call `agent_bootstrap`. It returns the persona, global directives, project context and a "
     "`context_version`. Pass that `context_version` to every subsequent memory, document and skill tool. "
     "If you skip bootstrap, those tools return BOOTSTRAP_REQUIRED. "
-    "Use memory_search for facts/decisions/lessons, doc_search/doc_read for documents, "
-    "and skill_list/skill_get/skill_file for folder-shaped skills. "
-    "At the END of a task, call memory_ingest with a concise summary of durable decisions, "
-    "lessons and preferences. The user should not have to manually copy transcripts; "
-    "automatic capture is part of your job."
+    "The UI is READ-ONLY. You are the writer: when the user states a durable requirement, decision, "
+    "lesson or preference, call `memory_write` directly with a stable `topic`, the right `scope` "
+    "(project by default; global only for user-wide preferences), and a `rationale` plus `conditions`. "
+    "Do not create a candidate or ask the user to approve it. Use `doc_add` for documents, "
+    "`skill_install`/`skill_file` for folder-shaped skills, and `identity_update` for persona changes. "
+    "Put tone, tics and verbal habits inside `persona`; there is no separate sentence_end field. "
+    "A memory must be usable in context: say which project/condition it applies to, not a bare universal claim."
 )
 
 
@@ -108,6 +110,60 @@ TOOLS: list[dict[str, Any]] = [
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
     },
     {
+        "name": "memory_write",
+        "title": "Write memory directly",
+        "description": (
+            "The normal AI-facing write path: immediately upsert an ACTIVE memory. No candidate/approval queue. "
+            "Use a stable topic (e.g. decision.storage.sqlite) so a later correction updates the same memory. "
+            "Default scope is the current project; use scope=global only for user-wide preferences. "
+            "rationale is required for decision/lesson; conditions records where it applies. Requires bootstrap."
+        ),
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "content": {"type": "string"},
+                "topic": {"type": "string", "description": "Stable lowercase key, e.g. decision.storage.sqlite"},
+                "type": {"type": "string", "enum": ["fact", "preference", "decision", "lesson", "procedure", "reference"]},
+                "scope": {"type": "string", "enum": ["project", "global"]},
+                "project_id": {"type": "string"},
+                "rationale": {"type": "string"},
+                "conditions": {"type": "string"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "source": {"type": "string"},
+                "evidence_quote": {"type": "string"},
+            },
+            ["context_version", "content", "topic"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "identity_update",
+        "title": "Update identity",
+        "description": (
+            "Let the AI update the user's portable persona/identity (name, persona, address, language, boundaries). "
+            "Put tone/tic/verbal habits inside persona; do not add a separate sentence_end field. Requires bootstrap."
+        ),
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "name": {"type": "string"},
+                "persona": {"type": "string"},
+                "address_user": {"type": "string"},
+                "language": {"type": "string"},
+                "boundaries": {"type": "array", "items": {"type": "string"}},
+            },
+            ["context_version"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "audit_list",
+        "title": "Recent activity",
+        "description": "Read-only recent memory/document/skill/identity writes (the UI activity view).",
+        "inputSchema": _schema({"limit": {"type": "integer", "minimum": 1, "maximum": 200}}),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
         "name": "memory_list",
         "title": "List memory",
         "description": "List active memory in the current project and global scope. Requires bootstrap.",
@@ -121,48 +177,6 @@ TOOLS: list[dict[str, Any]] = [
             ["context_version"],
         ),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
-    },
-    {
-        "name": "memory_ingest",
-        "title": "Ingest and extract",
-        "description": (
-            "Store raw conversation/document text as an episode and extract candidate memories. "
-            "Candidates are not searchable until approved, unless auto_activate is true. Requires bootstrap."
-        ),
-        "inputSchema": _schema(
-            {
-                "context_version": CTX,
-                "text": {"type": "string"},
-                "source": {"type": "string"},
-                "project_id": {"type": "string"},
-                "auto_activate": {"type": "boolean", "description": "Activate high-confidence candidates immediately."},
-                "use_llm": {"type": "boolean", "description": "Use the configured LLM extractor when available."},
-                "agent_id": {"type": "string"},
-            },
-            ["context_version", "text"],
-        ),
-        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
-    },
-    {
-        "name": "memory_candidates",
-        "title": "List candidates",
-        "description": "List extracted memories waiting for review. Requires bootstrap.",
-        "inputSchema": _schema({"context_version": CTX, "project_id": {"type": "string"}}, ["context_version"]),
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
-    },
-    {
-        "name": "memory_decide",
-        "title": "Approve or reject candidate",
-        "description": "Approve (active) or reject a candidate memory. Requires bootstrap.",
-        "inputSchema": _schema(
-            {
-                "context_version": CTX,
-                "memory_id": {"type": "string"},
-                "decision": {"type": "string", "enum": ["approve", "reject"]},
-            },
-            ["context_version", "memory_id"],
-        ),
-        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
     },
     {
         "name": "memory_update",
@@ -349,8 +363,37 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
         return _ok({"agent_id": service.get_agent_id(), "identity": identity})
     if name == "agent_status":
         return _ok(service.status())
+    if name == "audit_list":
+        return _ok(service.audit_list(int(args.get("limit", 50))))
 
     ctx = args.get("context_version")
+    if name == "memory_write":
+        return _ok(
+            service.memory_write(
+                ctx,
+                args["content"],
+                type=args.get("type", "fact"),
+                topic=args["topic"],
+                scope=args.get("scope", "project"),
+                project_id=args.get("project_id"),
+                rationale=args.get("rationale", ""),
+                conditions=args.get("conditions", ""),
+                confidence=float(args.get("confidence", 0.85)),
+                source=args.get("source", "agent"),
+                evidence_quote=args.get("evidence_quote"),
+            )
+        )
+    if name == "identity_update":
+        return _ok(
+            service.identity_update(
+                ctx,
+                name=args.get("name"),
+                persona=args.get("persona"),
+                address_user=args.get("address_user"),
+                language=args.get("language"),
+                boundaries=args.get("boundaries"),
+            )
+        )
     if name == "memory_search":
         return _ok(
             service.memory_search(
@@ -381,22 +424,6 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 limit=int(args.get("limit", 50)),
             )
         )
-    if name == "memory_ingest":
-        return _ok(
-            service.memory_ingest(
-                ctx,
-                args["text"],
-                source=args.get("source", "conversation"),
-                agent_id=args.get("agent_id"),
-                project_id=args.get("project_id"),
-                auto_activate=bool(args.get("auto_activate", False)),
-                use_llm=args.get("use_llm"),
-            )
-        )
-    if name == "memory_candidates":
-        return _ok(service.memory_candidates(ctx, project_id=args.get("project_id")))
-    if name == "memory_decide":
-        return _ok(service.memory_decide(ctx, args["memory_id"], args.get("decision", "approve")))
     if name == "memory_update":
         return _ok(
             service.memory_update(

@@ -4,7 +4,7 @@
 
 本文记录**已经影响架构、且后续实现必须遵守**的决策。每条包含背景、决策、备选、代价、验证与回滚条件；未验证的选型不写成既成事实。
 
-> **实现状态（2026-10-21）**：MVP 已实现 MCP stdio、Identity/Bootstrap Gate、SQLite 存储、词法检索、Episode + 规则/可选 LLM 抽取 + 候选审核、文件夹技能、文档、HTTP Hub + 本地 proxy、Material 3 Web UI、`membridge watch` 自动同步。ADR 中的 PostgreSQL/pgvector、op log、字段级冲突合并、embedding/rerank、E2EE、生产级 Docker 验证仍是**目标决策**，尚未实现；以本文状态与验证门槛为准。
+> **实现状态（2026-10-21）**：MVP 已实现 MCP stdio、Identity/Bootstrap Gate、SQLite 存储、词法检索、`memory_write` 直接 active（topic/scope/rationale/conditions，无候选/批准）、`identity_update`、文件夹技能、文档、HTTP Hub + 本地 proxy、Material 3 只读 Web UI、audit。ADR 中的 PostgreSQL/pgvector、op log、字段级冲突合并、embedding/rerank、E2EE、生产级 Docker 验证仍是**目标决策**，尚未实现；以本文状态与验证门槛为准。
 
 ## 状态定义
 
@@ -25,7 +25,7 @@
 | ADR-002 | 产品范围：单用户、自部署、课程 MVP | 已确认 | W1 教师确认 |
 | ADR-003 | 接入协议：MCP 优先，CLI/Hook 补充 | 已采纳（工程） | W4 三 agent 闭环 |
 | ADR-004 | 记忆模型：Episode + 结构化 Memory Item + Provenance | 已采纳（工程） | W5 抽取评测 |
-| ADR-005 | 写入与治理：自动采集 + 候选/审核 | 已采纳（工程） | W5 审核吞吐 |
+| ADR-005 | 写入与治理：AI 直接写 + topic/scope/audit（替代候选/审核） | 已替代旧版 | W5 污染审计 |
 | ADR-006 | 同步模型：服务端权威 op log + 客户端游标 | 已采纳（工程） | W7 收敛测试 |
 | ADR-007 | 冲突解决：字段级合并 + 冲突副本 + 人工裁决 | 已采纳（工程） | W7 冲突测试 |
 | ADR-008 | 存储：PostgreSQL + pgvector + 全文检索 | 建议 | W2 spike |
@@ -196,39 +196,44 @@ W4 用 3 个 agent 完成“检索 → 注入 → 写回”闭环；记录各客
 
 ---
 
-## ADR-005：写入与治理——自动采集 + 候选/审核
+## ADR-005：写入与治理——AI 直接写 + topic/scope/audit
 
-**状态：已采纳（工程）｜日期：2026-10-21｜复审：W5**
+**状态：已替代旧版（2026-10-21）｜复审：W5**
+
+> 旧版“自动采集 + 候选/审核”已被本决策替代。用户明确要求：AI 有意识地调用 MCP 写入，UI 只读，不存在候选队列/人工批准。
 
 ### 背景
 
-全自动写入会放大抽取错误与提示注入；全手动写入则用户不会用。个人记忆需要“低摩擦采集 + 可控入库”。
+全自动文本抽取会把项目结论写成无场景的全局规则；人工审核又违背“AI 自己维护”的产品定位。正确边界是：**AI 在用户提出持久要求时主动写，服务端用 topic/scope/rationale/conditions + audit 治理**。
 
 ### 决策
 
-- **采集**：默认只采“用户消息 + assistant 摘要 + 工具调用摘要”，不采完整文件与大段代码；采集前做密钥/高熵字符串扫描，`secret` 级直接阻断。
-- **提炼**：异步批处理，按 session 聚合；LLM 输出严格 JSON Schema，必须含 `claim`、`evidence_quote`、`type`、`scope`、`confidence`。
-- **入库**：默认进入 `candidate`；高置信且无冲突可自动 `active`；低置信、冲突、敏感、跨项目晋升进入审核队列。
-- **审核**：控制台支持通过/拒绝/编辑/合并/拆分；审核动作写审计。
-- **全局**：任何进入 `global` 作用域的记忆或技能，必须 `verified` 且人工确认。
+- **入口**：`memory_write`（记忆）、`doc_add`（文档）、`skill_install`（技能文件夹）、`identity_update`（人格）。
+- **状态**：写入即 `active`，没有 `candidate` / `approve` / `reject` UI。
+- **topic**：必须提供稳定 lowercase key（如 `decision.storage`）；同 project + topic 的后续写入更新同一条，version + 1。
+- **scope**：默认当前 project；`global` 只能用于用户级偏好，不能把项目决策写成全局规则。
+- **质量门槛**：`decision` / `lesson` 必须有 `rationale`；建议写 `conditions`。服务端拒绝缺失 rationale 的写入。
+- **审计**：所有写入落 `audit_log`；UI「活动」只读展示。
+- **UI**：只读；不提供采集、候选、编辑、上传。
 
 ### 备选
 
 | 方案 | 优点 | 代价 | 结论 |
 |---|---|---|---|
-| 全自动写入 | 零摩擦 | 错误/投毒直接污染 | 不做 |
-| 全手动 | 可控 | 采用率低 | 不做 |
-| 自动候选 + 分级审核 | 平衡 | 需要审核 UI 与队列 | **采用** |
+| 自动抽取 + 候选/审核 | 错误不直接污染 | 违背 AI 自主维护；审核负担 | 不做 |
+| 纯自由文本写入 | 简单 | 近似重复、无场景、不可治理 | 不做 |
+| AI 主动写 + topic/scope/audit | 低摩擦 + 可治理 | 依赖 agent 判断 | **采用** |
 
 ### 后果
 
-- 正面：错误不会静默进入全局；用户可纠正；审计完整。
-- 代价：审核负担；异步带来延迟；需要“待审核”提示，否则用户会忽略。
-- 指标：审核队列积压、通过率、误合并率、用户每周审核时长。
+- 正面：零审核队列；记忆有 topic/scope/理由/条件；可回看审计。
+- 代价：agent 必须在正确时机写；没有人工兜底。用 bootstrap instructions、tool description 和 rationale 强制约束。
+- 风险：错误写入直接 active；通过 audit、version、topic upsert 和后续修正降低影响。
 
 ### 验证与回滚
 
-用 100 条样本测抽取与审核吞吐；若审核负担过高，提高自动通过阈值，但 `global` 仍需人工。若投毒测试失败，收紧自动通过并默认全部候选。
+- 隔离 Codex + 真实 OpenAI 兼容端点实测：`agent_bootstrap → memory_write → memory_search`，写回 `decision.storage` 并读到 `conditions`；`identity_update` 写入 persona 后 version 3。
+- 若出现严重污染，回滚到旧版候选流程需要恢复已删除的 UI/表字段；当前选择是保持只读 UI + 可审计修正。
 
 ---
 

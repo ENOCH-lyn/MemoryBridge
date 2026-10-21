@@ -64,13 +64,19 @@ class RemoteTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             svc.bootstrap(project_path="demo")
 
-    def test_remote_ingest_and_review(self) -> None:
+    def test_remote_memory_write(self) -> None:
         svc = RemoteService(self.url, TOKEN)
         boot = svc.bootstrap(project_path="demo")
-        ingested = svc.memory_ingest(boot["context_version"], "以后都用中文提交信息。")
-        memory_id = ingested["candidates"][0]["memory_id"]
-        decided = svc.memory_decide(boot["context_version"], memory_id, "approve")
-        self.assertEqual(decided["status"], "active")
+        written = svc.memory_write(
+            boot["context_version"],
+            "以后都用中文提交信息。",
+            topic="preference.commit_language",
+            type="preference",
+            scope="global",
+            rationale="用户跨项目要求。",
+            conditions="团队规范优先。",
+        )
+        self.assertEqual(written["status"], "active")
         found = svc.memory_search(boot["context_version"], "中文")
         self.assertGreaterEqual(found["count"], 1)
 

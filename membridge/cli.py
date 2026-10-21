@@ -13,7 +13,6 @@ from .mcp_server import run_stdio
 from .remote import RemoteService, run_hub
 from .seed import seed as seed_data
 from .service import AgentSyncService
-from .sync import SyncEngine, init_project as init_project_dir, watch as watch_project
 
 
 DEFAULT_DB = os.environ.get("MEMBRIDGE_DB", "membridge.db")
@@ -104,6 +103,26 @@ def cmd_directive(args) -> int:
     return 0
 
 
+def cmd_write(args) -> int:
+    svc = _service(args)
+    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+    result = svc.memory_write(
+        bootstrap["context_version"],
+        args.content,
+        type=args.memory_type,
+        topic=args.topic,
+        scope=args.scope,
+        rationale=args.rationale,
+        conditions=args.conditions,
+        confidence=args.confidence,
+        source="cli",
+    )
+    result["context_version"] = bootstrap["context_version"]
+    _print(result, True)
+    svc.close()
+    return 0
+
+
 def cmd_remember(args) -> int:
     svc = _service(args)
     bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
@@ -130,45 +149,6 @@ def cmd_search(args) -> int:
         k=args.k,
     )
     _print(result, args.json)
-    svc.close()
-    return 0
-
-
-def cmd_ingest(args) -> int:
-    svc = _service(args)
-    if args.file:
-        text = Path(args.file).expanduser().read_text(encoding="utf-8")
-    else:
-        text = args.text or ""
-    if not text.strip():
-        raise SystemExit("provide text or --file")
-    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
-    result = svc.memory_ingest(
-        bootstrap["context_version"],
-        text,
-        source=args.source,
-        auto_activate=args.auto_activate,
-    )
-    result["context_version"] = bootstrap["context_version"]
-    _print(result, True)
-    svc.close()
-    return 0
-
-
-def cmd_candidates(args) -> int:
-    svc = _service(args)
-    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
-    result = svc.memory_candidates(bootstrap["context_version"])
-    _print(result, args.json)
-    svc.close()
-    return 0
-
-
-def cmd_decide(args, decision: str) -> int:
-    svc = _service(args)
-    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
-    result = svc.memory_decide(bootstrap["context_version"], args.memory_id, decision)
-    _print(result, True)
     svc.close()
     return 0
 
@@ -263,42 +243,6 @@ def cmd_skills(args) -> int:
         raise SystemExit("unknown skills command")
     _print(result, True)
     svc.close()
-    return 0
-
-
-def _backend(args):
-    remote = getattr(args, "remote", None)
-    if remote:
-        token = getattr(args, "token", None) or os.environ.get("MEMBRIDGE_TOKEN", "")
-        return RemoteService(remote, token=token)
-    return _service(args)
-
-
-def cmd_init_project(args) -> int:
-    result = init_project_dir(args.path)
-    _print(result, True)
-    return 0
-
-
-def cmd_sync(args) -> int:
-    service = _backend(args)
-    try:
-        engine = SyncEngine(service, args.project_path, auto_activate=bool(getattr(args, "auto_activate", False)))
-        result = engine.sync_once()
-        _print(result, True)
-    finally:
-        service.close()
-    return 0
-
-
-def cmd_watch(args) -> int:
-    service = _backend(args)
-    try:
-        watch_project(service, args.project_path, interval=args.interval, auto_activate=bool(getattr(args, "auto_activate", False)))
-    except KeyboardInterrupt:
-        pass
-    finally:
-        service.close()
     return 0
 
 
@@ -399,6 +343,17 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--priority", type=int, default=50)
     add.set_defaults(func=cmd_directive, directive_command="add")
 
+    p = sub.add_parser("write", help="direct active memory upsert with topic/scope/rationale")
+    p.add_argument("content")
+    p.add_argument("--topic", required=True)
+    p.add_argument("--type", dest="memory_type", choices=["fact", "preference", "decision", "lesson", "procedure", "reference"], default="fact")
+    p.add_argument("--scope", choices=["project", "global"], default="project")
+    p.add_argument("--rationale", default="")
+    p.add_argument("--conditions", default="")
+    p.add_argument("--project-path", default=None)
+    p.add_argument("--confidence", type=float, default=0.85)
+    p.set_defaults(func=cmd_write)
+
     p = sub.add_parser("remember", help="store a memory in the current/global scope")
     p.add_argument("content")
     p.add_argument("--type", dest="memory_type", choices=["fact", "preference", "decision", "lesson", "procedure", "reference"], default="fact")
@@ -412,28 +367,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--scope", choices=["auto", "project", "global"], default="auto")
     p.add_argument("--k", type=int, default=8)
     p.set_defaults(func=cmd_search)
-
-    p = sub.add_parser("ingest", help="store raw text as an episode and extract candidate memories")
-    p.add_argument("text", nargs="?", default=None)
-    p.add_argument("--file", default=None)
-    p.add_argument("--project-path", default=None)
-    p.add_argument("--source", default="conversation")
-    p.add_argument("--auto-activate", action="store_true")
-    p.set_defaults(func=cmd_ingest)
-
-    p = sub.add_parser("candidates", help="list candidates waiting for review")
-    p.add_argument("--project-path", default=None)
-    p.set_defaults(func=cmd_candidates)
-
-    p = sub.add_parser("approve", help="approve a candidate memory")
-    p.add_argument("memory_id")
-    p.add_argument("--project-path", default=None)
-    p.set_defaults(func=lambda args: cmd_decide(args, "approve"))
-
-    p = sub.add_parser("reject", help="reject a candidate memory")
-    p.add_argument("memory_id")
-    p.add_argument("--project-path", default=None)
-    p.set_defaults(func=lambda args: cmd_decide(args, "reject"))
 
     p = sub.add_parser("forget", help="soft-delete a memory")
     p.add_argument("memory_id")
@@ -493,25 +426,6 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--step", action="append")
     add.add_argument("--project-path", default=None)
     add.set_defaults(func=cmd_skills, skills_command="add")
-
-    p = sub.add_parser("init-project", help="create .membridge/{inbox,skills}")
-    p.add_argument("--path", default=".")
-    p.set_defaults(func=cmd_init_project)
-
-    p = sub.add_parser("sync", help="sync docs/, .membridge/skills and .membridge/inbox once")
-    p.add_argument("--project-path", default=".")
-    p.add_argument("--remote", default=None)
-    p.add_argument("--token", default=None)
-    p.add_argument("--auto-activate", action="store_true")
-    p.set_defaults(func=cmd_sync)
-
-    p = sub.add_parser("watch", help="poll the project and sync changes continuously")
-    p.add_argument("--project-path", default=".")
-    p.add_argument("--interval", type=float, default=5.0)
-    p.add_argument("--remote", default=None)
-    p.add_argument("--token", default=None)
-    p.add_argument("--auto-activate", action="store_true")
-    p.set_defaults(func=cmd_watch)
 
     p = sub.add_parser("export", help="export all data as JSON")
     p.add_argument("--out", required=True)

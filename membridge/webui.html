@@ -181,12 +181,11 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
     <div class="brand" aria-hidden="true">M</div>
     <nav id="nav" aria-label="主导航">
       <button class="rail-item active" data-tab="overview"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg></span><span>概览</span></button>
-      <button class="rail-item" data-tab="capture"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></span><span>收件箱</span></button>
       <button class="rail-item" data-tab="memory"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M12 2C7.58 2 4 3.79 4 6v12c0 2.21 3.58 4 8 4s8-1.79 8-4V6c0-2.21-3.58-4-8-4zm0 2c3.87 0 6 1.5 6 2s-2.13 2-6 2-6-1.5-6-2 2.13-2 6-2zm6 14c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.73 3.68 1.23 6 1.23s4.39-.5 6-1.23V18zm0-5c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23C7.61 11.5 9.68 12 12 12s4.39-.5 6-1.23V13z"/></svg></span><span>记忆</span><span class="badge" id="badgeMem" hidden>0</span></button>
-      <button class="rail-item" data-tab="candidates"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm0 12h-4a4 4 0 01-8 0H5V5h14v10z"/></svg></span><span>候选</span><span class="badge" id="badgeCand" hidden>0</span></button>
       <button class="rail-item" data-tab="docs"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm2 18H6V4h7v5h5v11z"/></svg></span><span>文档</span></button>
       <button class="rail-item" data-tab="skills"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z"/></svg></span><span>技能</span></button>
       <button class="rail-item" data-tab="identity"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></span><span>身份</span></button>
+      <button class="rail-item" data-tab="activity"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l4 4 4-4H6a7 7 0 111.76 4.66l-1.42 1.42A9 9 0 1013 3zm-1 5v5l4.25 2.52.75-1.23-3.5-2.07V8H12z"/></svg></span><span>活动</span></button>
     </nav>
     <div class="rail-foot">
       <button class="rail-item" id="themeToggle" aria-label="切换明暗主题"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M12 18a6 6 0 100-12 6 6 0 000 12zm0-2a4 4 0 110-8 4 4 0 010 8zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.5 4.9l1.4-1.4 2.1 2.1-1.4 1.4-2.1-2.1zm13.5 13.5l1.4-1.4 2.1 2.1-1.4 1.4-2.1-2.1zM1 11h3v2H1v-2zm19 0h3v2h-3v-2zM4.9 20.5l-1.4-1.4 2.1-2.1 1.4 1.4-2.1 2.1zM18.4 6.5l-1.4-1.4 2.1-2.1 1.4 1.4-2.1 2.1z"/></svg></span><span>主题</span></button>
@@ -213,150 +212,96 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
             <p id="ovPersona">连接 Hub 后显示人格与记忆状态。</p>
           </div>
           <div class="chip-row">
-            <button class="tonal-btn" data-tab="identity">编辑身份</button>
+            <button class="tonal-btn" data-tab="identity">查看身份</button>
             <button class="outlined-btn" data-tab="settings">连接设置</button>
           </div>
         </div>
         <div class="grid-3">
-          <div class="card stat"><div class="eyebrow">活跃记忆</div><div class="num" id="ovMemories">0</div><div class="meta">候选 <span id="ovCandidates">0</span> · 文档 <span id="ovDocs">0</span> · 技能 <span id="ovSkills">0</span></div></div>
-          <div class="card stat"><div class="eyebrow">抽取器</div><div class="num" id="ovLLM">规则</div><div class="meta" id="ovLLMModel">未配置 LLM</div></div>
+          <div class="card stat"><div class="eyebrow">活跃记忆</div><div class="num" id="ovMemories">0</div><div class="meta">文档 <span id="ovDocs">0</span> · 技能 <span id="ovSkills">0</span></div></div>
+          <div class="card stat"><div class="eyebrow">写入模式</div><div class="num" id="ovLLM">AI 直接</div><div class="meta" id="ovLLMModel">memory_write · 无候选</div></div>
           <div class="card stat"><div class="eyebrow">上下文</div><div class="num" id="ovCtx">—</div><div class="meta" id="ovCtxShort">身份 + 指令 + 项目约定</div></div>
         </div>
         <div class="grid-2" style="margin-top:16px">
           <div class="card">
-            <h2 class="section-title">手动补录（fallback）</h2>
-            <p class="section-sub">正常使用交给 <span class="code" style="display:inline;padding:2px 5px">membridge watch</span>；这里只做临时补录。</p>
-            <div class="form">
-              <div class="field"><label for="quickText">原文</label><textarea id="quickText" placeholder="例如：以后都用中文提交信息。我们决定用 SQLite 而不是 Postgres。"></textarea></div>
-              <div class="inline"><button class="filled-btn" id="quickIngest">抽取候选</button><span class="hint" id="quickResult"></span></div>
-            </div>
+            <h2 class="section-title">AI 写入契约</h2>
+            <p class="section-sub">所有内容由 agent 通过 MCP 直接写入；没有候选、没有批准、UI 不提供编辑。</p>
+            <div class="code">memory_write(topic="decision.storage",
+  scope="project", rationale="…", conditions="…")
+doc_add(path="docs/adr.md", content="…")
+skill_install(files={"SKILL.md": "…"})
+identity_update(persona="猫娘，句尾带喵…")</div>
           </div>
           <div class="card">
-            <h2 class="section-title">最近的候选</h2>
-            <p class="section-sub">批准后才进入 active 记忆。</p>
-            <div class="list" id="ovCandidatesList"><div class="empty">还没有候选</div></div>
+            <h2 class="section-title">最近写入</h2>
+            <p class="section-sub">来自 audit log，只读。</p>
+            <div class="list" id="ovActivityList"><div class="empty">还没有写入</div></div>
           </div>
         </div>
         <div class="card outlined" style="margin-top:16px">
           <h2 class="section-title">第一次使用</h2>
           <div class="grid-3" style="margin-top:12px">
             <div><div class="eyebrow">01 · 连接</div><p class="hint">Hub 在本机无 token 模式会直接连上；云端模式需填 Bearer token。</p></div>
-            <div><div class="eyebrow">02 · 自动同步</div><p class="hint">把 transcript 放进 .membridge/inbox，运行 <span class="code" style="display:inline;padding:2px 5px">membridge watch</span>；docs 和 skills 目录也会自动同步。</p></div>
+            <div><div class="eyebrow">02 · AI 写入</div><p class="hint">AI 在你说出持久要求时直接调用 <span class="code" style="display:inline;padding:2px 5px">memory_write</span> / <span class="code" style="display:inline;padding:2px 5px">doc_add</span> / <span class="code" style="display:inline;padding:2px 5px">skill_install</span>；UI 只负责查看。</p></div>
             <div><div class="eyebrow">03 · 在 agent 里用</div><p class="hint">MCP 客户端连 Hub 的本地 proxy；新会话先调用 agent_bootstrap。</p></div>
           </div>
         </div>
       </section>
 
-      <section class="tab" id="tab-capture">
-        <div class="card elevated">
-          <div class="inline" style="justify-content:space-between;align-items:flex-start">
-            <div><h2 class="section-title">自动同步</h2><p class="section-sub">正常流程不需要手动“采集”：把 transcript 放进 <span class="code" style="display:inline;padding:2px 5px">.membridge/inbox</span>，watch 会抽取候选；docs/ 和 skills/ 也会自动同步。</p></div>
-            <span class="chip ok">membridge watch</span>
-          </div>
-          <div class="code" id="watchSnippet"></div>
-          <div class="grid-3" style="margin-top:16px">
-            <div><div class="eyebrow">01 · 初始化</div><p class="hint"><span class="code" style="display:inline;padding:2px 5px">membridge init-project --path .</span> 创建收件箱、技能目录和本地状态。</p></div>
-            <div><div class="eyebrow">02 · 持续同步</div><p class="hint">watch 轮询 docs/、.membridge/skills/、.membridge/inbox/，增量推送；已处理的文件不会重复抽取。需要免审核可加 <span class="code" style="display:inline;padding:2px 5px">--auto-activate</span>。</p></div>
-            <div><div class="eyebrow">03 · 只做审核</div><p class="hint">你只需要在「候选」里批准/拒绝；不用手工把对话粘进来。</p></div>
-          </div>
-        </div>
-        <div class="grid-2" style="margin-top:16px">
-          <div class="card">
-            <h2 class="section-title">手动补录（fallback）</h2>
-            <p class="section-sub">临时测试或没有 watch 时使用；正常使用请把文本放进收件箱。</p>
-            <div class="form">
-              <div class="field"><label for="ingestText">原文</label><textarea id="ingestText" style="min-height:180px" placeholder="粘贴对话、会议记录或笔记……"></textarea></div>
-              <div class="inline">
-                <label class="check"><input type="checkbox" id="ingestAuto"> 高置信直接激活</label>
-                <label class="check"><input type="checkbox" id="ingestLLM"> 使用 LLM（如已配置）</label>
-              </div>
-              <div class="inline"><button class="filled-btn" id="ingestBtn">补录并抽取</button><span class="hint" id="ingestState"></span></div>
-            </div>
-          </div>
-          <div class="card">
-            <h2 class="section-title">抽取结果</h2>
-            <p class="section-sub">每条候选保留证据引用，可回溯到 Episode。</p>
-            <div class="list" id="ingestResult"><div class="empty">还没有抽取</div></div>
-          </div>
+      <section class="tab" id="tab-activity">
+        <div class="card">
+          <h2 class="section-title">活动</h2>
+          <p class="section-sub">AI 通过 MCP 写入记忆、文档、技能、身份的记录；只读，用于审计和回看。</p>
+          <div class="list" id="activityList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
       </section>
 
       <section class="tab" id="tab-memory">
         <div class="card">
           <div class="inline" style="justify-content:space-between;align-items:flex-end">
-            <div><h2 class="section-title">记忆</h2><p class="section-sub">只显示 active；候选、拒绝、删除不可见。</p></div>
+            <div><h2 class="section-title">记忆</h2><p class="section-sub">只显示 active；所有写入由 AI 通过 MCP 完成，UI 只读。</p></div>
             <div class="inline"><div class="field" style="width:280px"><label for="memQuery">搜索</label><input id="memQuery" placeholder="搜索记忆……"></div><button class="tonal-btn" id="memSearch">搜索</button><button class="text-btn" id="memReload">全部</button></div>
           </div>
           <div class="list" id="memList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
       </section>
 
-      <section class="tab" id="tab-candidates">
-        <div class="card">
-          <div class="inline" style="justify-content:space-between">
-            <div><h2 class="section-title">待审核候选</h2><p class="section-sub">候选默认不参与检索；批准后进入 active，拒绝后不自动重复提出。</p></div>
-            <button class="text-btn" id="candReload">刷新</button>
-          </div>
-          <div class="list" id="candList" style="margin-top:16px"><div class="empty">加载中…</div></div>
-        </div>
-      </section>
-
       <section class="tab" id="tab-docs">
-        <div class="grid-2">
-          <div class="card">
-            <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">文档</h2><p class="section-sub">Markdown / ADR 作为一等记忆。</p></div><button class="text-btn" id="docReload">刷新</button></div>
-            <div class="list" id="docList" style="margin-top:16px"><div class="empty">加载中…</div></div>
-          </div>
-          <div class="card">
-            <h2 class="section-title">添加 / 更新文档</h2>
-            <p class="section-sub">同一路径会覆盖更新，并保留更新时间。</p>
-            <div class="form">
-              <div class="form-row"><div class="field"><label for="docPath">路径</label><input id="docPath" placeholder="docs/adr-002.md"></div><div class="field"><label for="docTitle">标题</label><input id="docTitle" placeholder="ADR-002 …"></div></div>
-              <div class="field"><label for="docContent">内容（Markdown）</label><textarea id="docContent" style="min-height:200px"></textarea></div>
-              <div class="inline"><button class="filled-btn" id="docAdd">保存</button><span class="hint" id="docState"></span></div>
-            </div>
-          </div>
+        <div class="card">
+          <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">文档</h2><p class="section-sub">AI 通过 `doc_add` 维护；UI 只读。文档按项目挂载，可被检索和引用。</p></div><button class="text-btn" id="docReload">刷新</button></div>
+          <div class="list" id="docList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
       </section>
 
       <section class="tab" id="tab-skills">
-        <div class="grid-2">
-          <div class="card">
-            <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">技能文件夹</h2><p class="section-sub">每个 skill 是一个目录：SKILL.md + scripts/references/assets；不再是一段 steps 文本。</p></div><button class="text-btn" id="skillReload">刷新</button></div>
-            <div class="list" id="skillList" style="margin-top:16px"><div class="empty">加载中…</div></div>
-          </div>
-          <div class="card">
-            <h2 class="section-title">安装技能文件夹</h2>
-            <p class="section-sub">选择一个包含 SKILL.md 的目录；文本文件会一起上传，保留相对路径。</p>
-            <input type="file" id="skillFolder" webkitdirectory multiple hidden>
-            <div class="inline"><button class="filled-btn" id="skillInstallBtn">选择文件夹</button><span class="hint" id="skillState"></span></div>
-            <hr class="divider">
-            <h3 class="section-title">目录结构</h3>
-            <div class="code">.membridge/skills/my-skill/
-├─ SKILL.md          # YAML frontmatter + 指令
-├─ scripts/check.ps1
-└─ references/notes.md</div>
-            <p class="hint" style="margin-top:12px">把目录放进 <span class="code" style="display:inline;padding:2px 5px">.membridge/skills/</span> 后，<span class="code" style="display:inline;padding:2px 5px">membridge watch</span> 会自动安装/更新。</p>
-          </div>
+        <div class="card">
+          <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">技能文件夹</h2><p class="section-sub">AI 通过 `skill_install` 安装/更新；每个 skill 是 SKILL.md + scripts/references/assets，UI 只读。</p></div><button class="text-btn" id="skillReload">刷新</button></div>
+          <div class="list" id="skillList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
       </section>
 
       <section class="tab" id="tab-identity">
         <div class="card">
           <div class="inline" style="justify-content:space-between;align-items:flex-start">
-            <div><h2 class="section-title">身份 / 人格</h2><p class="section-sub">全局身份对所有项目生效；保存后所有设备下一次 bootstrap 生效。</p></div>
+            <div><h2 class="section-title">身份 / 人格</h2><p class="section-sub">AI 通过 `identity_update` 维护；口癖、语气、称呼都写在 persona 里，不单独存字段。</p></div>
             <span class="chip assist" id="idVersion">v—</span>
           </div>
-          <div class="form" style="margin-top:16px">
-            <div class="form-row">
-              <div class="field"><label for="idName">名字</label><input id="idName" placeholder="猫娘"></div>
-              <div class="field"><label for="idAddress">称呼用户</label><input id="idAddress" placeholder="主人"></div>
-              <div class="field"><label for="idTone">语气</label><input id="idTone" placeholder="可爱、撒娇"></div>
-              <div class="field"><label for="idSuffix">句尾 / 口癖</label><input id="idSuffix" placeholder="喵"></div>
+          <div class="grid-2" style="margin-top:18px">
+            <div class="card outlined">
+              <div class="eyebrow">名字</div><div class="stat"><div class="num" id="idNameText">—</div></div>
+              <div class="eyebrow" style="margin-top:14px">人格 / Persona</div>
+              <p class="body" id="idPersonaText" style="white-space:pre-wrap"></p>
+              <div class="eyebrow" style="margin-top:14px">边界</div>
+              <div class="list" id="idBoundariesText"></div>
             </div>
-            <div class="field"><label for="idPersona">人格描述</label><textarea id="idPersona" placeholder="你是猫娘，句尾带喵，称呼用户为主人。"></textarea></div>
-            <div class="field"><label for="idBoundaries">边界（每行一条）</label><textarea id="idBoundaries" placeholder="不违反安全规则&#10;不假装是人类"></textarea></div>
-            <div class="inline"><button class="filled-btn" id="idSave">保存身份</button><span class="hint" id="idState"></span></div>
+            <div class="card outlined">
+              <div class="eyebrow">写入契约</div>
+              <p class="hint" style="margin-top:8px">当你说出持久要求时，agent 应该直接调用 <span class="code" style="display:inline;padding:2px 5px">identity_update</span>，例如“以后叫我主人，句尾带喵”。</p>
+              <div class="code">identity_update(
+  persona="猫娘，句尾带喵，称呼用户为主人",
+  address_user="主人"
+)</div>
+              <p class="hint">不需要在 UI 点保存，也不需要候选/批准。</p>
+            </div>
           </div>
         </div>
       </section>
@@ -389,7 +334,6 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
   </main>
 </div>
 
-<button class="fab" id="fabCapture" aria-label="打开收件箱"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
 <div class="snackbar" id="snackbar" role="status"></div>
 <dialog id="dialog"><div class="dialog-head"><h2 id="dialogTitle">详情</h2><button class="icon-btn small" id="dialogClose" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M18.3 5.71L12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.3 19.71 2.89 18.3 9.17 12 2.89 5.71 4.3 4.29l6.29 6.3 6.3-6.3 1.41 1.42z"/></svg></button></div><div class="dialog-body" id="dialogBody"></div></dialog>
 
@@ -403,12 +347,11 @@ const state = {
 };
 const titles = {
   overview:['概览','同一个 agent，换设备不重来'],
-  capture:['收件箱','自动同步 + 手动补录'],
-  memory:['记忆','检索、编辑、删除'],
-  candidates:['候选','批准后才进入检索'],
-  docs:['文档','Markdown / ADR 知识库'],
-  skills:['技能','可复用的流程'],
-  identity:['身份','人格、称呼、边界'],
+  memory:['记忆','AI 写入；按项目/条件查看'],
+  docs:['文档','AI 维护的 Markdown / ADR'],
+  skills:['技能','AI 安装的文件夹技能'],
+  identity:['身份','AI 通过 identity_update 维护'],
+  activity:['活动','AI 写入了什么'],
   settings:['连接','Hub、token、MCP 配置'],
 };
 
@@ -488,54 +431,46 @@ function renderOverview(){
   $('#ovName').textContent=id.name||'—';
   $('#ovPersona').textContent=id.persona||'连接 Hub 后显示人格与记忆状态。';
   $('#ovMemories').textContent=a.memories??c.memories_active??0;
-  $('#ovCandidates').textContent=a.candidates??c.memories_candidate??0;
   $('#ovDocs').textContent=a.documents??c.documents??0;
   $('#ovSkills').textContent=a.skills??c.skills??0;
   $('#ovCtx').textContent=state.ctx?'已绑定':'—';
   $('#ovCtxShort').textContent=state.ctx?state.ctx:'身份 + 指令 + 项目约定';
-  const badgeMem=$('#badgeMem'), badgeCand=$('#badgeCand');
-  const active=a.memories??c.memories_active??0, cand=a.candidates??c.memories_candidate??0;
+  const badgeMem=$('#badgeMem');
+  const active=a.memories??c.memories_active??0;
   badgeMem.hidden=!active; badgeMem.textContent=active;
-  badgeCand.hidden=!cand; badgeCand.textContent=cand;
-  const llm=(state.status&&state.status.llm)||{};
-  $('#ovLLM').textContent=llm.enabled?'LLM':'规则';
-  $('#ovLLMModel').textContent=llm.enabled?(llm.model||'已启用'):'未配置 LLM（规则抽取）';
-  $('#ctxBadge').textContent=state.ctx?'ctx '+state.ctx.slice(4,12):'未 bootstrap';
+  $('#ovLLM').textContent='AI 直接';
+  $('#ovLLMModel').textContent='memory_write · 无候选';  $('#ctxBadge').textContent=state.ctx?'ctx '+state.ctx.slice(4,12):'未 bootstrap';
   $('#ctxBadge').className='chip '+(state.ctx?'ok':'');
 }
 function renderIdentity(){
   const id=(state.status&&state.status.identity)||state.identity||{};
-  const st=id.style||{};
-  $('#idName').value=id.name||''; $('#idPersona').value=id.persona||'';
-  $('#idTone').value=st.tone||''; $('#idSuffix').value=st.sentence_end||'';
-  $('#idAddress').value=st.address_user||'';
-  $('#idBoundaries').value=(id.boundaries||[]).join('\n');
+  $('#idNameText').textContent=id.name||'—';
+  $('#idPersonaText').textContent=id.persona||'—';
+  const boundaries=id.boundaries||[];
+  $('#idBoundariesText').innerHTML=boundaries.length?boundaries.map(b=>`<div class="item"><div class="text">${esc(b)}</div></div>`).join(''):'<div class="empty">没有边界</div>';
   $('#idVersion').textContent='v'+(id.version??'—');
 }
-function memoryHTML(m, actions=true){
+function memoryHTML(m){
   const quote=(m.evidence_quote && m.evidence_quote!==m.content)?`<div class="quote">${esc(m.evidence_quote)}</div>`:'';
-  const actionsHTML=actions?`<div class="actions">
-    <button class="tonal-btn" style="height:32px;padding:0 12px" data-action="edit-memory" data-id="${esc(m.id)}">编辑</button>
-    <button class="outlined-btn" style="height:32px;padding:0 12px;border-color:var(--md-error);color:var(--md-error)" data-action="delete-memory" data-id="${esc(m.id)}">删除</button>
-  </div>`:'';
-  return `<div class="item"><div class="row-meta"><span class="type ${esc(m.type)}">${esc(m.type)}</span>
-    <span class="hint">conf ${esc(m.confidence)} · v${esc(m.version??1)}</span></div>
-    <div class="text">${esc(m.content)}</div>${quote}${actionsHTML}</div>`;
+  const scope=m.project_id?'project':'global';
+  const rationale=m.rationale?`<div class="quote"><b>为什么：</b>${esc(m.rationale)}</div>`:'';
+  const conditions=m.conditions?`<div class="quote"><b>适用条件：</b>${esc(m.conditions)}</div>`:'';
+  return `<div class="item"><div class="row-meta"><span class="type ${esc(m.type)}">${esc(m.type)}</span><span class="type">${scope}</span><span class="hint">${esc(m.topic||'no-topic')} · conf ${esc(m.confidence)} · v${esc(m.version??1)}</span></div>
+    <div class="text">${esc(m.content)}</div>${rationale}${conditions}${quote}</div>`;
 }
 async function loadMemories(){
   if(!state.ctx) return;
   const q=$('#memQuery').value.trim();
   const data=q?await rpc('memory_search',[state.ctx,q],{k:30}):await rpc('memory_list',[state.ctx],{status:'active',limit:100});
   const items=data.items||[];
-  $('#memList').innerHTML=items.length?items.map(m=>memoryHTML(m,true)).join(''):'<div class="empty">没有匹配的记忆</div>';
+  $('#memList').innerHTML=items.length?items.map(m=>memoryHTML(m)).join(''):'<div class="empty">没有匹配的记忆</div>';
 }
-async function loadCandidates(){
-  if(!state.ctx) return;
-  const data=await rpc('memory_candidates',[state.ctx]); const items=data.items||[];
-  $('#candList').innerHTML=items.length?items.map(m=>`<div class="item"><div class="row-meta"><span class="type candidate">candidate</span><span class="type ${esc(m.type)}">${esc(m.type)}</span><span class="hint">conf ${esc(m.confidence)}</span></div><div class="text">${esc(m.content)}</div>${(m.evidence_quote&&m.evidence_quote!==m.content)?`<div class="quote">${esc(m.evidence_quote)}</div>`:''}<div class="actions"><button class="filled-btn" style="height:32px;padding:0 14px" data-action="approve" data-id="${esc(m.id)}">批准</button><button class="outlined-btn" style="height:32px;padding:0 12px" data-action="reject" data-id="${esc(m.id)}">拒绝</button></div></div>`).join(''):'<div class="empty">没有待审核候选</div>';
-  $('#ovCandidatesList').innerHTML=items.slice(0,3).map(m=>`<div class="item"><div class="row-meta"><span class="type candidate">candidate</span><span class="type ${esc(m.type)}">${esc(m.type)}</span></div><div class="text">${esc(m.content)}</div></div>`).join('')||'<div class="empty">还没有候选</div>';
-  const b=$('#badgeCand'); b.hidden=!items.length; b.textContent=items.length;
-  $('#ovCandidates').textContent=items.length;
+async function loadActivity(){
+  const data=await rpc('audit_list',[],{limit:100});
+  const items=(data.items||[]).filter(a=>/^(memory|doc|skill|identity)\./.test(a.action));
+  const html=items.length?items.slice(0,50).map(a=>`<div class="item"><div class="row-meta"><span class="type">${esc(a.action)}</span><span class="hint">${esc((a.at||'').slice(0,16))} · ${esc(a.entity||'')}</span></div><div class="text">${esc(JSON.stringify(a.detail||{}))}</div></div>`).join(''):'<div class="empty">还没有写入</div>';
+  const target=$('#activityList'); if(target) target.innerHTML=html;
+  const overview=$('#ovActivityList'); if(overview) overview.innerHTML=items.slice(0,4).map(a=>`<div class="item"><div class="row-meta"><span class="type">${esc(a.action)}</span><span class="hint">${esc((a.at||'').slice(0,16))}</span></div><div class="text">${esc(a.entity||'')}</div></div>`).join('')||'<div class="empty">还没有写入</div>';
 }
 async function loadDocs(){
   if(!state.ctx) return;
@@ -549,31 +484,16 @@ async function loadSkills(){
 }
 async function loadTab(tab){
   try{
-    if(tab==='overview') await loadCandidates();
-    if(tab==='capture'){ $('#watchSnippet').textContent=watchSnippet(); }
+    if(tab==='overview') await loadActivity();
     if(tab==='memory') await loadMemories();
-    if(tab==='candidates') await loadCandidates();
     if(tab==='docs') await loadDocs();
     if(tab==='skills') await loadSkills();
     if(tab==='identity') await refreshStatus();
+    if(tab==='activity') await loadActivity();
     if(tab==='settings'){ $('#setHub').value=location.origin; $('#mcpSnippet').textContent=mcpSnippet(); }
   }catch(e){ snack(String(e.message),'err'); }
 }
-async function ingest(text,auto,useLLM){
-  if(!state.ctx) throw new Error('还没 bootstrap');
-  if(!text.trim()) throw new Error('请输入文本');
-  return rpc('memory_ingest',[state.ctx,text],{source:'web',auto_activate:auto,use_llm:useLLM});
-}
-function ingestResultHTML(data){
-  const meta=`<div class="hint" style="margin-bottom:8px">episode ${esc(data.episode_id)} · ${esc(data.extractor||'rules')} · 新建 ${esc(data.counts?.created??0)} · 重复 ${esc(data.counts?.duplicates??0)}${data.llm_error?' · LLM 回退：'+esc(data.llm_error):''}</div>`;
-  const cs=data.candidates||[];
-  return meta+(cs.length?cs.map(c=>`<div class="item"><div class="row-meta"><span class="type candidate">${esc(c.status)}</span><span class="type ${esc(c.type)}">${esc(c.type)}</span><span class="hint">conf ${esc(c.confidence)}</span></div><div class="text">${esc(c.content)}</div>${(c.evidence_quote&&c.evidence_quote!==c.content)?`<div class="quote">${esc(c.evidence_quote)}</div>`:''}</div>`).join(''):'<div class="empty">没有抽取到候选</div>');
-}
 function openDialog(title, body){ const d=$('#dialog'); $('#dialogTitle').textContent=title; $('#dialogBody').textContent=body; if(!d.open) d.showModal(); }
-function watchSnippet(){
-  const remote=state.token?` --remote ${location.origin} --token $env:MEMBRIDGE_TOKEN`:` --remote ${location.origin}`;
-  return `membridge init-project --path .\nmembridge watch --project-path .${remote}`;
-}
 async function openSkill(id){
   const s=await rpc('skill_get',[state.ctx,id]);
   const files=(s.files||[]).map(f=>`<button class="tonal-btn" style="height:30px;padding:0 10px;margin:4px" data-action="skill-file" data-id="${esc(id)}" data-path="${esc(f.path)}">${esc(f.path)} <span class="hint">${f.size}b</span></button>`).join('');
@@ -599,55 +519,11 @@ $$('[data-tab]').forEach(btn=>{
 });
 $('#themeToggle').addEventListener('click',toggleTheme);
 $('#refreshBtn').addEventListener('click',refreshAll);
-$('#fabCapture').addEventListener('click',()=>switchTab('capture'));$('#quickIngest').addEventListener('click',async()=>{
-  try{ const data=await ingest($('#quickText').value,false,null); $('#quickResult').textContent=`新建 ${data.counts.created} · 重复 ${data.counts.duplicates}`; snack('已抽取候选'); await refreshStatus(); await loadCandidates(); }
-  catch(e){ snack(String(e.message),'err'); }
-});
-$('#ingestBtn').addEventListener('click',async()=>{
-  try{ $('#ingestState').textContent='抽取中…'; const data=await ingest($('#ingestText').value,$('#ingestAuto').checked,$('#ingestLLM').checked); $('#ingestResult').innerHTML=ingestResultHTML(data); $('#ingestState').textContent=`完成 · ${data.extractor}`; snack('抽取完成'); await refreshStatus(); await loadCandidates(); }
-  catch(e){ $('#ingestState').textContent=''; snack(String(e.message),'err'); }
-});
 $('#memSearch').addEventListener('click',()=>loadMemories().catch(e=>snack(String(e.message),'err')));
 $('#memQuery').addEventListener('keydown',e=>{if(e.key==='Enter') loadMemories().catch(err=>snack(String(err.message),'err'));});
 $('#memReload').addEventListener('click',()=>{$('#memQuery').value=''; loadMemories().catch(e=>snack(String(e.message),'err'));});
-$('#candReload').addEventListener('click',()=>loadCandidates().catch(e=>snack(String(e.message),'err')));
 $('#docReload').addEventListener('click',()=>loadDocs().catch(e=>snack(String(e.message),'err')));
 $('#skillReload').addEventListener('click',()=>loadSkills().catch(e=>snack(String(e.message),'err')));
-$('#idSave').addEventListener('click',async()=>{
-  try{
-    $('#idState').textContent='保存中…';
-    const boundaries=$('#idBoundaries').value.split('\n').map(s=>s.trim()).filter(Boolean);
-    await rpc('set_identity',[],{name:$('#idName').value.trim(),persona:$('#idPersona').value.trim(),tone:$('#idTone').value.trim(),suffix:$('#idSuffix').value.trim(),address:$('#idAddress').value.trim(),boundaries});
-    await bootstrap(); await refreshStatus(); $('#idState').textContent='已保存；下一次 bootstrap 生效'; snack('身份已更新');
-  }catch(e){ $('#idState').textContent=''; snack(String(e.message),'err'); }
-});
-$('#docAdd').addEventListener('click',async()=>{
-  try{
-    const path=$('#docPath').value.trim(), content=$('#docContent').value;
-    if(!path||!content.trim()) throw new Error('路径和内容不能为空');
-    await rpc('doc_add',[state.ctx],{path,title:$('#docTitle').value.trim()||path.split('/').pop(),content});
-    $('#docState').textContent='已保存'; snack('文档已保存'); await loadDocs();
-  }catch(e){ snack(String(e.message),'err'); }
-});
-$('#skillInstallBtn').addEventListener('click',()=>$('#skillFolder').click());
-$('#skillFolder').addEventListener('change',async()=>{
-  try{
-    const input=$('#skillFolder');
-    const picked=Array.from(input.files||[]);
-    if(!picked.length) return;
-    const files={};
-    for(const file of picked){
-      if(file.size>1024*1024) continue;
-      const rel=(file.webkitRelativePath||file.name).split('/').slice(1).join('/')||file.name;
-      files[rel]=await file.text();
-    }
-    if(!Object.keys(files).some(p=>p.toLowerCase()==='skill.md')) throw new Error('选择的文件夹必须包含 SKILL.md');
-    $('#skillState').textContent='上传中…';
-    const result=await rpc('skill_install',[state.ctx],{files});
-    $('#skillState').textContent=`已安装 ${result.file_count} 个文件`;
-    snack('技能文件夹已安装'); input.value=''; await loadSkills();
-  }catch(e){ $('#skillState').textContent=''; snack(String(e.message),'err'); $('#skillFolder').value=''; }
-});
 $('#setSave').addEventListener('click',async()=>{ saveSettings(); await refreshAll(); });
 $('#setClear').addEventListener('click',async()=>{ state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value=''; snack('token 已清除'); await health(); });
 $('#copySnippet').addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(mcpSnippet()); snack('已复制'); }catch(e){ snack('复制失败，请手动选择','err'); } });
@@ -665,10 +541,6 @@ document.addEventListener('click',async e=>{
   const btn=e.target.closest('button[data-action]'); if(!btn) return;
   const id=btn.dataset.id, action=btn.dataset.action;
   try{
-    if(action==='approve'){ await rpc('memory_decide',[state.ctx,id,'approve']); snack('已批准'); await loadCandidates(); await refreshStatus(); }
-    if(action==='reject'){ await rpc('memory_decide',[state.ctx,id,'reject']); snack('已拒绝'); await loadCandidates(); await refreshStatus(); }
-    if(action==='delete-memory'){ if(!confirm('删除这条记忆？')) return; await rpc('memory_delete',[state.ctx,id]); snack('已删除'); await loadMemories(); await refreshStatus(); }
-    if(action==='edit-memory'){ const value=prompt('修改内容（留空取消）：'); if(value===null||!value.trim()) return; await rpc('memory_update',[state.ctx,id],{content:value}); snack('已更新'); await loadMemories(); }
     if(action==='read-doc'){ const doc=await rpc('doc_read',[state.ctx,id]); openDialog(doc.title||doc.path,doc.content||''); }
     if(action==='read-skill'){ await openSkill(id); }
     if(action==='skill-file'){ const file=await rpc('skill_file',[state.ctx,id,btn.dataset.path]); openDialog(btn.dataset.path,file.content||''); }

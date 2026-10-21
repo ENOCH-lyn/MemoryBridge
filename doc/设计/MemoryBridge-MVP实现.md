@@ -9,26 +9,8 @@
 
 MVP 只验证一件事：**同一个 MCP 服务，能否让任意客户端在新会话里恢复同一个 agent 的人格与上下文。**
 
-已做：Identity、Bootstrap Gate、项目作用域、记忆/文档/技能文件夹、CLI、MCP、HTTP Hub、可选 LLM 抽取、watch 自动同步。  
+已做：Identity、Bootstrap Gate、项目作用域、`memory_write` 直接 active、文档、技能文件夹、`identity_update`、audit、CLI、MCP、HTTP Hub。  
 未做/下一阶段：向量检索、多设备并发冲突（op log）、多租户、E2EE。
-
-## 4.2 自动同步（watch）
-
-```text
-membridge init-project --path .
-  └─ .membridge/{inbox,skills,state.json}
-
-membridge watch --project-path . [--remote URL] [--auto-activate]
-  ├─ docs/**/*.md            → doc_add（按内容 hash 去重）
-  ├─ .membridge/skills/*/    → skill_install（整个文件夹）
-  └─ .membridge/inbox/*      → memory_ingest（按内容 hash 去重）
-```
-
-- 正常使用不需要在 UI 手工“采集”；UI 的收件箱页只保留手动补录 fallback。
-- 默认抽取为候选，人工审核后 active；加 `--auto-activate` 可让高置信候选直接进入 active（个人使用可选）。
-- MCP `initialize.instructions` 要求 agent 在任务结束时调用 `memory_ingest`，把持久结论写回。
-- 同步是本地进程 push 到 Hub，不依赖 Hub 访问用户文件系统；删除/重命名暂不自动处理。
-
 
 ## 2. 组件
 
@@ -48,9 +30,8 @@ mcp_server.py
                                                      (POST /rpc, Bearer)
 ```
 
-- `extract.py`：确定性规则抽取；`llm.py`：可选 OpenAI 兼容抽取，失败回退规则。
-- `sync.py`：本地项目同步器；`watch` 轮询 docs/、`.membridge/skills/`、`.membridge/inbox/`。
-- `webui.html`：Hub 自带单页控制台（Material 3：概览/收件箱/记忆/候选/文档/技能/身份/连接）。
+- `service.py`：服务端只做校验与存储；不内置 LLM 抽取。
+- `webui.html`：Hub 自带 Material 3 **只读**控制台（概览/记忆/文档/技能/身份/活动/连接）。
 
 ## 3. 数据模型
 
@@ -59,12 +40,12 @@ mcp_server.py
 | `identity` | 单行：name / persona / style_json / boundaries_json / version |
 | `directives` | global 或 project 级 standing instruction，priority |
 | `projects` | 稳定 key（git remote 或目录名）、id、name、path、conventions_json |
-| `memories` | type / content / confidence / source / status / episode_id / evidence_quote / content_hash / version / uses / helpful |
-| `episodes` | 原始对话/文档片段，候选记忆的证据来源 |
+| `memories` | type / content / topic / scope(project_id) / rationale / conditions / confidence / source / status / episode_id / evidence_quote / content_hash / version / uses / helpful |
+| `episodes` | legacy bulk ingest 的原始片段；不是主写入路径 |
 | `documents` | project、path、title、content |
-| `skills` | name / trigger / steps_json / status / success / failure |
+| `skills` | name / slug / description / status / manifest_json / dir_path / file_count；文件在 `data/skills/<id>/` |
 | `sessions` | context_version、agent_id、project_id、identity_version、过期时间 |
-| `audit_log` | 追加写审计 |
+| `audit_log` | 追加写审计；UI「活动」读它 |
 
 ## 4. Bootstrap 流程
 
@@ -91,34 +72,33 @@ memory_search(context_version, query)
 
 `context_version` 只哈希“身份 + 指令 + 项目约定”，不哈希记忆条数；新增记忆不会让会话失效，改人格/项目约定会。
 
-## 4.1 Capture：Episode → 候选 → 审核
+## 4.1 AI 直接写记忆（无候选/批准）
 
 ```text
-memory_ingest(context_version, text)
+memory_write(ctx, content, topic, type, scope="project",
+             rationale, conditions, confidence)
   ├─ validate_context()
-  ├─ INSERT episodes(content, project_id, agent_id, source)
-  ├─ extract.py: 规则切句/分类 → candidates
-  ├─ 去重（content_hash + active/candidate/rejected）
-  ├─ INSERT memories(status='candidate' | 'active' if auto_activate)
-  └─ return { episode_id, candidates, duplicates }
-
-memory_candidates(ctx)       # 列出待审核
-memory_decide(ctx, id, approve/reject)
-memory_update(ctx, id, content/confidence)
-memory_delete(ctx, id)       # 软删除 + deleted_at
+  ├─ topic 必须是稳定 lowercase key（如 decision.storage.sqlite）
+  ├─ decision/lesson 必须有 rationale
+  ├─ scope=project 默认当前项目；scope=global 仅用于用户级偏好
+  ├─ SELECT active WHERE project_id IS ? AND topic = ?
+  │    ├─ 命中 → UPDATE 同一条，version + 1
+  │    └─ 未命中 → INSERT status='active'
+  └─ audit: memory.write {topic, project_id, updated}
 ```
 
-- 候选默认不可检索；`memory_search` 只查 `status='active'`。
-- 每条候选保留 `episode_id` + `evidence_quote`，可回溯到原始片段。
-- `reject` 后同一内容的 hash 仍在 rejected，`memory_ingest` 不会自动重复提出。
-- 抽取器：规则版始终可用；配置 `MEMBRIDGE_LLM_BASE_URL/API_KEY/MODEL` 后优先 LLM，失败回退规则，结果里返回 `extractor` 与 `llm_error`。已用真实 OpenAI 兼容端点验证抽取，候选保留证据引用。
-- 自动入口：`membridge watch` 监听 `.membridge/inbox`，不需要手工“采集”；docs/ 与 skill 文件夹也由同一个 watch 增量同步。MCP instructions 要求 agent 在任务结束时调用 `memory_ingest` 写入持久结论。
-- 技能是**文件夹**：`SKILL.md`（YAML frontmatter + 正文）+ `scripts/`、`references/`、`assets/`。Hub 落盘到 `data/skills/<skill_id>/`，DB 只存元数据与文件清单；`skill_install` / `skill_file` 读写整个包，UI 可上传目录。
+- **没有候选队列、没有人工批准**；UI 只读。AI 在用户提出持久要求时主动写。
+- `topic` 是治理核心：后续修正更新同一条，不堆近似重复。
+- `scope` 防止“A 项目用 SQLite”被写成所有项目都必须用 SQLite。
+- `rationale` 记录为什么；`conditions` 记录适用边界（环境/阶段/并发/团队规范）。
+- 身份用 `identity_update`；文档用 `doc_add`；技能用 `skill_install`/`skill_file`。
+- `memory_ingest` / 服务端 LLM 抽取已移除；AI 客户端自己判断何时调用 `memory_write`。
+- **技能是文件夹**：`SKILL.md`（YAML frontmatter + 正文）+ `scripts/`、`references/`、`assets/`。Hub 落盘到 `data/skills/<skill_id>/`，DB 只存元数据与文件清单；`skill_install` / `skill_file` 读写整个包，UI 只读查看。
 
 ## 5. 检索
 
 - 中文：双字 bigram；英文：单词；去重后逐个 `in` 文本。
-- 只检索 `status='active'`；候选/拒绝/删除不可见。
+- 只检索 `status='active'`；候选/拒绝/删除不可见（legacy bulk ingest 的中间态不进入 UI）。
 - 评分：`0.55*覆盖率 + 0.15*精确匹配 + 0.10*置信度 + 0.10*时间衰减 + 0.10*类型先验`。
 - 输出：content、score、snippet、`[mem:id]`、episode_id/evidence；文档同理。
 - 这是**词法检索**，不是 embedding；下一阶段接 bge-m3/pgvector。
@@ -136,11 +116,12 @@ memory_delete(ctx, id)       # 软删除 + deleted_at
 
 Hub 在 `GET /` 直接返回 `webui.html`（单文件 HTML/CSS/JS，无构建、无 CDN）。界面按 Material 3 设计：导航 rail、tonal surface、filled/tonal/outlined 按钮、明暗主题、snackbar/dialog；不是营销落地页，而是操作控制台。
 
-- 概览：身份、活跃记忆/候选/文档/技能、LLM 状态、手动补录。
-- 收件箱：说明 `membridge watch` 自动同步；手动粘贴仅作 fallback。
-- 记忆：搜索、编辑、软删除；候选：批准/拒绝。
-- 文档/技能：文档列表；技能文件夹列表、目录查看、文件读取、目录上传。
-- 身份：改 persona/style/boundaries；保存后下一次 bootstrap 生效。
+- 概览：身份、活跃记忆、文档/技能数、LLM 状态、AI 写入契约、最近写入。
+- 记忆：只读；显示 type、project/global、topic、rationale、conditions、证据。
+- 文档/技能：只读列表；技能可查看目录与单文件。
+- 身份：只读；AI 通过 `identity_update` 改 persona/address/boundaries。
+- 活动：显示 memory/doc/skill/identity 的 audit 写入。
+- 连接：token、项目路径、MCP 配置、导出、健康检查。
 - 连接：token、项目路径、MCP 配置片段、`/export` 下载、健康检查。
 
 浏览器通过同源 `POST /rpc` 调用 Hub，token 存在 `localStorage`；页面本身不含数据，未带 token 只能看到连接页。
@@ -164,15 +145,15 @@ Hub 在 `GET /` 直接返回 `webui.html`（单文件 HTML/CSS/JS，无构建、
 |---|---|---|
 | Letta MemFS | root 身份 always-on、lazy 目录、Git 版本思路 | 本项目不绑定 runtime；用 SQLite + MCP |
 | mcp-memory-service | bootstrap profile 的 token 预算/avoid rules/user corrections | 本项目把 bootstrap 做成 Gate；并加项目隔离 |
-| Memobase | 结构化画像、buffer + 固定 LLM 调用 | 本项目先手动/agent 写入，自动抽取下一阶段 |
-| MemOS | L1/L2/L3 + Skill | 本项目只保留 Skill 最小表 |
+| Memobase | 结构化画像、分层 buffer | 本项目用 project/global scope + topic 表达，由 AI 直接写 |
+| MemOS | L1 trace / L2 policy / L3 world model / Skill | 本项目保留 Skill 文件夹与 audit，不引入服务端 LLM |
 | 官方 MCP memory | 先 “Remembering” 再检索 | 本项目用 `BOOTSTRAP_REQUIRED` 半强制 |
 
 ## 8. 已知限制与下一步
 
 1. 远程：已有 Hub + 本地 proxy + Bearer；待 TLS、账号体系、限流、Hub 高可用。
 2. 多设备同步：Hub 是中心 SQLite；待 op log + 游标 + 冲突副本，当前并发写最后写入生效。
-3. 抽取：规则 + 可选 LLM（OpenAI 兼容）；待语义去重、字段级冲突、LLM 质量评测。
+3. 写入治理：topic/scope/rationale/conditions 已实现；待补冲突检测与批量审计报表。
 4. 向量检索：bge-m3 + pgvector + 混合排序。
 5. 技能晋升：候选 → 验证 → 项目/全局，带审计。
 6. 安全：密钥扫描、提示注入标记、权限与速率限制。

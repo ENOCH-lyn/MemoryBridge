@@ -35,42 +35,62 @@ def seed(service: AgentSyncService) -> dict:
     )
 
     ctx = service.bootstrap(project_path="demo", client="seed")["context_version"]
-    service.memory_add(
+    service.memory_write(
         ctx,
-        "列表分页使用 cursor，避免深 offset 性能退化。",
+        "Demo 项目使用 SQLite 单文件存储，而不是 Postgres。",
         type="decision",
+        topic="decision.storage",
+        scope="project",
         project_id=project["id"],
-        confidence=0.9,
-        source="seed",
-    )
-    service.memory_add(
-        ctx,
-        "Windows 路径含空格时，pytest fixture 应使用 pathlib 并用引号包裹路径。",
-        type="lesson",
-        project_id=project["id"],
-        confidence=0.86,
-        source="seed",
-    )
-    service.memory_add(
-        ctx,
-        "提交信息使用中文，格式为 <type>(<scope>): <摘要>。",
-        type="preference",
-        confidence=0.95,
-        source="seed",
-    )
-    service.memory_add(
-        ctx,
-        "Demo 项目使用 SQLite + Python 标准库，零外部依赖。",
-        type="fact",
-        project_id=project["id"],
+        rationale="课程 MVP 是单用户、要求零外部依赖、可离线拷贝和演示。",
+        conditions="适用于当前 demo/单用户、低并发场景；多用户或高并发需要重新评估 Postgres。",
         confidence=0.92,
         source="seed",
     )
-    service.memory_add(
+    service.memory_write(
         ctx,
-        "发布前运行 python -m unittest discover -s tests -v。",
-        type="procedure",
+        "Demo 项目在 Windows 上跑 pytest 时，路径含空格应使用 pathlib 并给 subprocess 参数加引号。",
+        type="lesson",
+        topic="lesson.pytest_windows",
+        scope="project",
         project_id=project["id"],
+        rationale="Windows 会按空格拆分未引用的命令行参数，字符串拼接容易把路径截断。",
+        conditions="仅适用于 Windows + 路径含空格的测试环境；Linux CI 不需要该处理。",
+        confidence=0.86,
+        source="seed",
+    )
+    service.memory_write(
+        ctx,
+        "用户偏好提交信息使用中文，格式为 <type>(<scope>): <摘要>。",
+        type="preference",
+        topic="preference.commit_language",
+        scope="global",
+        rationale="用户在多个项目中反复提出同一要求，属于跨项目偏好。",
+        conditions="默认适用于所有项目；若某项目有团队规范，以项目指令为准。",
+        confidence=0.95,
+        source="seed",
+    )
+    service.memory_write(
+        ctx,
+        "Demo 项目使用 Python 标准库 + SQLite，零外部运行时依赖。",
+        type="fact",
+        topic="fact.stack",
+        scope="project",
+        project_id=project["id"],
+        rationale="课程环境需要离线可跑、可直接拷贝数据库。",
+        conditions="当前 MVP 阶段；接入向量检索或多人协作后可能增加依赖。",
+        confidence=0.92,
+        source="seed",
+    )
+    service.memory_write(
+        ctx,
+        "Demo 项目发布前运行 python -m unittest discover -s tests -v。",
+        type="procedure",
+        topic="procedure.release_tests",
+        scope="project",
+        project_id=project["id"],
+        rationale="发布检查必须真实执行测试，不能只做静态检查。",
+        conditions="在仓库根目录、使用项目 Python 环境执行。",
         confidence=0.9,
         source="seed",
     )

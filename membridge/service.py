@@ -20,9 +20,11 @@ from .db import (
     new_id,
     utcnow,
 )
-from .extract import content_hash as compute_content_hash
-from .extract import extract_candidates as extract_memory_candidates
-from .llm import LLMConfig, extract_with_llm
+
+
+def _content_hash(text: str) -> str:
+    normalized = re.sub(r"[\W_]+", "", (text or "").lower(), flags=re.UNICODE)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:32]
 
 
 MEMORY_TYPES = {"fact", "preference", "decision", "lesson", "procedure", "reference"}
@@ -121,9 +123,8 @@ def _score(
 
 
 class AgentSyncService:
-    def __init__(self, db_path: str | Path, llm_config: LLMConfig | None = None):
+    def __init__(self, db_path: str | Path):
         self.db_path = str(db_path)
-        self.llm_config = llm_config or LLMConfig.from_env()
         base = Path(db_path).expanduser()
         if str(db_path) == ":memory:":
             self.skill_root = Path.cwd() / ".membridge-memory" / "skills"
@@ -218,6 +219,28 @@ class AgentSyncService:
         self._audit("identity.update", "identity", {"name": name, "persona": persona})
         self.conn.commit()
         return self.get_identity()
+
+    def identity_update(
+        self,
+        context_version: str,
+        *,
+        name: str | None = None,
+        persona: str | None = None,
+        address_user: str | None = None,
+        language: str | None = None,
+        boundaries: list[str] | None = None,
+    ) -> dict[str, Any]:
+        self.validate_context(context_version)
+        identity = self.set_identity(
+            name=name,
+            persona=persona,
+            address=address_user,
+            language=language,
+            boundaries=boundaries,
+        )
+        self._audit("identity.update", "identity", {"via": "mcp", "name": identity["name"]})
+        self.conn.commit()
+        return identity
 
     def add_directive(
         self,
@@ -454,13 +477,15 @@ class AgentSyncService:
                 "Use memory_search for facts, decisions and lessons",
                 "Use doc_search / doc_read for project documents",
                 "Use skill_list / skill_get / skill_file for folder-shaped skills",
-                "At task end, call memory_ingest with a concise durable summary",
+                "When the user states a durable requirement, call memory_write directly with topic/scope/rationale",
+                "Use identity_update for persona changes; put tone/tic inside persona",
             ],
             "capture_contract": {
-                "mode": "automatic",
-                "when": "end_of_task",
-                "tool": "memory_ingest",
-                "note": "Do not ask the user to copy/paste transcripts; write durable decisions/lessons yourself.",
+                "mode": "ai_initiated",
+                "when": "when_user_states_durable_requirement",
+                "tool": "memory_write",
+                "approval": "none",
+                "note": "You are the writer; the UI is read-only. Use a stable topic and project scope.",
             },
         }
 
@@ -546,6 +571,9 @@ class AgentSyncService:
             "confidence": row["confidence"],
             "source": row["source"],
             "status": row["status"],
+            "topic": row["topic"],
+            "rationale": row["rationale"],
+            "conditions": row["conditions"],
             "episode_id": row["episode_id"],
             "evidence_quote": row["evidence_quote"],
             "version": row["version"],
@@ -565,6 +593,100 @@ class AgentSyncService:
             "AND project_id IS ? LIMIT 1",
             (content_hash, *statuses, project_id),
         ).fetchone()
+
+    def memory_write(
+        self,
+        context_version: str,
+        content: str,
+        *,
+        type: str = "fact",
+        topic: str,
+        scope: str = "project",
+        project_id: str | None = None,
+        rationale: str = "",
+        conditions: str = "",
+        confidence: float = 0.85,
+        source: str = "agent",
+        evidence_quote: str | None = None,
+    ) -> dict[str, Any]:
+        """The normal AI-facing write path: direct active upsert, no approval queue.
+
+        A stable ``topic`` is mandatory so a later correction updates the same
+        memory instead of accumulating near-duplicates. ``rationale`` and
+        ``conditions`` are required for decisions/lessons so a project-scoped
+        fact does not silently become a global rule.
+        """
+        session = self.validate_context(context_version)
+        if type not in MEMORY_TYPES:
+            raise ValueError(f"type must be one of {sorted(MEMORY_TYPES)}")
+        if scope not in {"project", "global"}:
+            raise ValueError("scope must be project or global")
+        if not content.strip():
+            raise ValueError("content is required")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{2,79}", topic or ""):
+            raise ValueError("topic must be a stable lowercase key like decision.storage.sqlite")
+        if type in {"decision", "lesson"} and not rationale.strip():
+            raise ValueError(f"rationale is required for {type} memories")
+        if scope == "global":
+            target_project = None
+        else:
+            target_project = project_id if project_id is not None else session["project_id"]
+            if not target_project:
+                raise ValueError("project scope requires a project; bootstrap with project_path or use scope=global")
+            if self.get_project(target_project) is None:
+                raise ValueError(f"unknown project_id: {target_project}")
+        digest = _content_hash(content)
+        existing = self.conn.execute(
+            "SELECT * FROM memories WHERE project_id IS ? AND topic = ? AND status = 'active' LIMIT 1",
+            (target_project, topic),
+        ).fetchone()
+        now = utcnow()
+        if existing:
+            self.conn.execute(
+                "UPDATE memories SET type = ?, content = ?, confidence = ?, source = ?, topic = ?, "
+                "rationale = ?, conditions = ?, evidence_quote = ?, content_hash = ?, "
+                "version = version + 1, updated_at = ? WHERE id = ?",
+                (
+                    type,
+                    content.strip(),
+                    float(confidence),
+                    source,
+                    topic,
+                    rationale.strip(),
+                    conditions.strip(),
+                    evidence_quote,
+                    digest,
+                    now,
+                    existing["id"],
+                ),
+            )
+            self._audit("memory.write", existing["id"], {"topic": topic, "project_id": target_project, "updated": True})
+            self.conn.commit()
+            return {"memory_id": existing["id"], "project_id": target_project, "status": "active", "version": existing["version"] + 1}
+        memory_id = new_id("mem")
+        self.conn.execute(
+            "INSERT INTO memories(id, project_id, type, content, confidence, source, status, topic, rationale, "
+            "conditions, evidence_quote, content_hash, version, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, 1, ?, ?)",
+            (
+                memory_id,
+                target_project,
+                type,
+                content.strip(),
+                float(confidence),
+                source,
+                topic,
+                rationale.strip(),
+                conditions.strip(),
+                evidence_quote,
+                digest,
+                now,
+                now,
+            ),
+        )
+        self._audit("memory.write", memory_id, {"topic": topic, "project_id": target_project, "updated": False})
+        self.conn.commit()
+        return {"memory_id": memory_id, "project_id": target_project, "status": "active", "version": 1}
 
     def memory_add(
         self,
@@ -586,7 +708,7 @@ class AgentSyncService:
             target_project = None
         if target_project and self.get_project(target_project) is None:
             raise ValueError(f"unknown project_id: {target_project}")
-        digest = compute_content_hash(content)
+        digest = _content_hash(content)
         duplicate = self._find_duplicate(target_project, digest)
         if duplicate is not None:
             return {
@@ -719,190 +841,6 @@ class AgentSyncService:
         self.conn.commit()
         return {"memory_id": memory_id, "signal": signal, "confidence": round(confidence, 3)}
 
-    # ------------------------------------------------------------------
-    # capture: episodes, extraction, review
-    # ------------------------------------------------------------------
-    def _insert_episode(
-        self,
-        *,
-        content: str,
-        source: str,
-        agent_id: str,
-        project_id: str | None,
-        meta: dict | None = None,
-    ) -> str:
-        episode_id = new_id("ep")
-        self.conn.execute(
-            "INSERT INTO episodes(id, project_id, agent_id, source, content, meta_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (episode_id, project_id, agent_id, source, content.strip(), json_dumps(meta or {}), utcnow()),
-        )
-        return episode_id
-
-    def episode_add(
-        self,
-        context_version: str,
-        content: str,
-        *,
-        source: str = "conversation",
-        agent_id: str | None = None,
-        project_id: str | None = None,
-        meta: dict | None = None,
-    ) -> dict[str, Any]:
-        session = self.validate_context(context_version)
-        target = project_id if project_id is not None else session["project_id"]
-        if target == "global":
-            target = None
-        episode_id = self._insert_episode(
-            content=content,
-            source=source,
-            agent_id=agent_id or session["agent_id"],
-            project_id=target,
-            meta=meta,
-        )
-        self._audit("episode.add", episode_id, {"project_id": target, "source": source})
-        self.conn.commit()
-        return {"episode_id": episode_id, "project_id": target, "source": source}
-
-    def memory_ingest(
-        self,
-        context_version: str,
-        text: str,
-        *,
-        source: str = "conversation",
-        agent_id: str | None = None,
-        project_id: str | None = None,
-        auto_activate: bool = False,
-        use_llm: bool | None = None,
-    ) -> dict[str, Any]:
-        session = self.validate_context(context_version)
-        target = project_id if project_id is not None else session["project_id"]
-        if target == "global":
-            target = None
-        episode_id = self._insert_episode(
-            content=text,
-            source=source,
-            agent_id=agent_id or session["agent_id"],
-            project_id=target,
-        )
-        extractor = "rules"
-        llm_error: str | None = None
-        candidates: list[dict[str, Any]] = []
-        if use_llm is not False and self.llm_config.enabled:
-            try:
-                candidates = extract_with_llm(text, self.llm_config)
-                extractor = "llm"
-            except Exception as exc:  # fall back to deterministic extraction
-                llm_error = f"{type(exc).__name__}: {exc}"[:500]
-        if not candidates:
-            candidates = extract_memory_candidates(text)
-            if extractor == "llm":
-                extractor = "rules"
-        created: list[dict[str, Any]] = []
-        duplicates: list[dict[str, Any]] = []
-        now = utcnow()
-        for candidate in candidates:
-            duplicate = self._find_duplicate(target, candidate["content_hash"], ("active", "candidate", "rejected"))
-            if duplicate is not None:
-                duplicates.append(
-                    {
-                        "memory_id": duplicate["id"],
-                        "content": duplicate["content"],
-                        "status": duplicate["status"],
-                    }
-                )
-                continue
-            status = "active" if auto_activate and candidate["confidence"] >= 0.85 else "candidate"
-            memory_id = new_id("mem")
-            self.conn.execute(
-                "INSERT INTO memories(id, project_id, type, content, confidence, source, status, "
-                "episode_id, evidence_quote, content_hash, version, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                (
-                    memory_id,
-                    target,
-                    candidate["type"],
-                    candidate["content"],
-                    candidate["confidence"],
-                    f"episode:{episode_id}",
-                    status,
-                    episode_id,
-                    candidate["evidence_quote"],
-                    candidate["content_hash"],
-                    now,
-                    now,
-                ),
-            )
-            created.append(
-                {
-                    "memory_id": memory_id,
-                    "type": candidate["type"],
-                    "content": candidate["content"],
-                    "confidence": candidate["confidence"],
-                    "status": status,
-                    "evidence_quote": candidate["evidence_quote"],
-                }
-            )
-        self._audit(
-            "memory.ingest",
-            episode_id,
-            {"project_id": target, "created": len(created), "duplicates": len(duplicates)},
-        )
-        self.conn.commit()
-        return {
-            "episode_id": episode_id,
-            "project_id": target,
-            "extractor": extractor,
-            "llm_error": llm_error,
-            "candidates": created,
-            "duplicates": duplicates,
-            "counts": {"created": len(created), "duplicates": len(duplicates)},
-        }
-
-    def memory_candidates(
-        self,
-        context_version: str,
-        *,
-        project_id: str | None = None,
-    ) -> dict[str, Any]:
-        session = self.validate_context(context_version)
-        selected = project_id if project_id is not None else session["project_id"]
-        if selected:
-            rows = self.conn.execute(
-                "SELECT * FROM memories WHERE status = 'candidate' "
-                "AND (project_id = ? OR project_id IS NULL) ORDER BY updated_at DESC",
-                (selected,),
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                "SELECT * FROM memories WHERE status = 'candidate' AND project_id IS NULL "
-                "ORDER BY updated_at DESC"
-            ).fetchall()
-        return {"items": [self._memory_dict(row) for row in rows], "count": len(rows)}
-
-    def memory_decide(
-        self,
-        context_version: str,
-        memory_id: str,
-        decision: str = "approve",
-    ) -> dict[str, Any]:
-        session = self.validate_context(context_version)
-        if decision not in {"approve", "reject"}:
-            raise ValueError("decision must be approve or reject")
-        row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
-        if row is None:
-            raise ValueError(f"unknown memory_id: {memory_id}")
-        if row["project_id"] not in {session["project_id"], None}:
-            raise ValueError("memory is outside the current project scope")
-        status = "active" if decision == "approve" else "rejected"
-        self.conn.execute(
-            "UPDATE memories SET status = ?, version = version + 1, updated_at = ? WHERE id = ?",
-            (status, utcnow(), memory_id),
-        )
-        self._audit(f"memory.{decision}", memory_id, {"from": row["status"], "to": status})
-        self.conn.commit()
-        return {"memory_id": memory_id, "status": status}
-
     def memory_update(
         self,
         context_version: str,
@@ -921,7 +859,7 @@ class AgentSyncService:
             raise ValueError("memory is deleted")
         new_content = content.strip() if content is not None else row["content"]
         new_confidence = float(confidence) if confidence is not None else row["confidence"]
-        digest = compute_content_hash(new_content)
+        digest = _content_hash(new_content)
         self.conn.execute(
             "UPDATE memories SET content = ?, confidence = ?, content_hash = ?, "
             "version = version + 1, updated_at = ? WHERE id = ?",
@@ -1391,6 +1329,26 @@ class AgentSyncService:
             "lessons": recent["lessons"],
         }
 
+    def audit_list(self, limit: int = 50) -> dict[str, Any]:
+        limit = max(1, min(int(limit), 200))
+        rows = self.conn.execute(
+            "SELECT id, at, actor, action, entity, detail_json FROM audit_log ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        items = []
+        for row in rows:
+            items.append(
+                {
+                    "id": row["id"],
+                    "at": row["at"],
+                    "actor": row["actor"],
+                    "action": row["action"],
+                    "entity": row["entity"],
+                    "detail": json_loads(row["detail_json"], {}),
+                }
+            )
+        return {"items": items, "count": len(items)}
+
     def status(self) -> dict[str, Any]:
         counts = {}
         for table in ("projects", "memories", "documents", "skills", "directives", "episodes", "sessions"):
@@ -1403,7 +1361,6 @@ class AgentSyncService:
             "db": self.db_path,
             "identity": self.get_identity(),
             "counts": counts,
-            "llm": self.llm_config.public(),
             "seed": self._meta("seed", "0") == "1",
         }
 
@@ -1466,3 +1423,4 @@ class AgentSyncService:
         self._audit("import", None, {"imported": imported})
         self.conn.commit()
         return {"imported": imported}
+

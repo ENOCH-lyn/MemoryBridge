@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-import shutil
 from pathlib import Path
 
-from membridge.sync import SyncEngine, init_project
 from membridge.service import AgentSyncService
 
 
@@ -65,42 +63,6 @@ class SkillFolderTest(unittest.TestCase):
         loaded = self.svc.skill_get(self.ctx, result["skill_id"])
         self.assertEqual(loaded["steps"], ["run tests", "backup"])
         self.assertEqual(loaded["file_count"], 1)
-
-
-class SyncProjectTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory()
-        self.project = Path(self.tmp.name) / "project"
-        self.project.mkdir()
-        init_project(self.project)
-        shutil.rmtree(self.project / ".membridge" / "skills" / "example")
-        (self.project / "docs").mkdir()
-        (self.project / "docs" / "adr.md").write_text("# ADR\n\nUse SQLite.\n", encoding="utf-8")
-        inbox = self.project / ".membridge" / "inbox"
-        inbox.mkdir(parents=True, exist_ok=True)
-        (inbox / "chat.md").write_text("以后都用中文提交信息。", encoding="utf-8")
-        skill = self.project / ".membridge" / "skills" / "release"
-        skill.mkdir(parents=True)
-        (skill / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
-        (skill / "run.sh").write_text("echo release\n", encoding="utf-8")
-        self.svc = AgentSyncService(Path(self.tmp.name) / "sync.db")
-
-    def tearDown(self) -> None:
-        self.svc.close()
-        self.tmp.cleanup()
-
-    def test_sync_once_then_idempotent(self) -> None:
-        engine = SyncEngine(self.svc, self.project)
-        first = engine.sync_once()
-        self.assertEqual(first["docs"], 1)
-        self.assertEqual(first["skills"], 1)
-        self.assertEqual(first["inbox"], 1)
-        self.assertEqual(first["candidates"], 1)
-        second = engine.sync_once()
-        self.assertEqual(second["docs"], 0)
-        self.assertEqual(second["skills"], 0)
-        self.assertEqual(second["inbox"], 0)
-        self.assertGreaterEqual(second["skipped"], 3)
 
 
 if __name__ == "__main__":

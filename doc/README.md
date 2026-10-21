@@ -1,6 +1,6 @@
 # MemoryBridge 文档索引
 
-更新：2026-10-21。MVP 已可运行（MCP stdio + HTTP Hub + 本地 proxy + 文件夹技能 + watch 自动同步）；向量检索、冲突合并未完成。产品基线以[产品需求文档](需求/MemoryBridge-产品需求文档.md)为准；调研结论中的竞品性能多为厂商自报，未独立复现。
+更新：2026-10-21。MVP 已可运行（MCP stdio + HTTP Hub + 本地 proxy + 文件夹技能 + AI 直接写入、UI 只读）；向量检索、冲突合并未完成。产品基线以[产品需求文档](需求/MemoryBridge-产品需求文档.md)为准；调研结论中的竞品性能多为厂商自报，未独立复现。
 
 ## 文档地图
 
@@ -13,7 +13,7 @@
 | 架构 | [架构概览](架构/MemoryBridge-架构概览.md) | 组件、数据流、部署与待定项 | v0.2 |
 | 架构 | [ADR 架构决策文档](架构/MemoryBridge-ADR架构决策文档.md) | 17 条决策、备选、代价、验证与复审条件 | v0.1 |
 | 设计 | [MVP 实现说明](设计/MemoryBridge-MVP实现.md) | 数据模型、Bootstrap Gate、检索、MCP 协议与限制 | v0.1 |
-| 验收 | [自动化与文件夹技能验收](验收/MemoryBridge-自动化验收.md) | watch 幂等、技能目录、真实 LLM 抽取、测试与 UI 证据 | 2026-10-21 |
+| 验收 | [AI 直接写入 / 隔离 Codex 验收](验收/MemoryBridge-自动化验收.md) | 隔离 Codex+真实 LLM 通过 MCP 写记忆/改身份、UI 只读、37 测试 | 2026-10-21 |
 | 计划 | [12 周实施计划](计划/MemoryBridge-12周实施计划.md) | 里程碑、门槛、分工、预算、交付物 | 规划 |
 
 ## 后续拆分计划

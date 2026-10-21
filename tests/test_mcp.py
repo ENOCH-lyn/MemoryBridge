@@ -115,7 +115,7 @@ class McpTest(unittest.TestCase):
                     "method": "tools/call",
                     "params": {
                         "name": "memory_search",
-                        "arguments": {"context_version": ctx, "query": "分页 cursor"},
+                        "arguments": {"context_version": ctx, "query": "SQLite"},
                     },
                 },
             ],

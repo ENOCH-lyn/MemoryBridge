@@ -93,12 +93,12 @@ flowchart LR
 - **范围**：单用户、2 设备、3 个 agent、3 个项目（ADR-002）。
 - **接入**：MCP 优先，CLI/Hook 补充（ADR-003）。
 - **记忆**：Episode + 结构化 Memory Item + Provenance（ADR-004）。
-- **写入**：自动采集 + 候选/审核，全局晋升需人工确认（ADR-005）。
+- **写入**：AI 主动调用 `memory_write` 直接 active；topic/scope/rationale/conditions + audit；无候选/人工批准（ADR-005 修订）。
 - **同步**：服务端权威 op log + 客户端游标（ADR-006）。
 - **冲突**：字段级合并 + 冲突副本 + 人工裁决（ADR-007）。
 - **存储**：PostgreSQL + pgvector + 全文检索（ADR-008，W2 spike 验证）。
 - **检索**：混合召回 + 图扩展 + 重排 + Context Pack（ADR-009，W6 评测）。
-- **经验**：候选 → 验证 → 晋升 → 退役（ADR-010）。
+- **经验**：技能候选 → 验证 → 晋升 → 退役（ADR-010；记忆本身不设候选）。
 - **文档**：Markdown + Git 为真相（ADR-011）。
 - **权限**：本地账号 + 设备 token + Space ACL（ADR-012）。
 - **安全**：采集前脱敏、信任级、审计；E2EE 暂缓（ADR-013）。
@@ -140,15 +140,16 @@ flowchart LR
 | Identity / Gate | 版本化 Identity Pack + context_version | 已实现 |
 | 存储 | PostgreSQL + pgvector | SQLite 单文件 |
 | 检索 | 混合召回 + 图扩展 + 重排 | 词法（英文词 + 中文双字） |
+| 记忆写入 | AI 维护 + 版本/审计 | `memory_write` 直接 active；topic/scope/rationale/conditions；无候选 |
 | 跨设备 | op log + 冲突副本 | 中心 HTTP Hub + 本地 proxy + Bearer |
 | 文档 | Markdown + Git | SQLite 文档表 + 词法检索 |
-| 技能 | 候选→验证→晋升 | 文件夹包：SKILL.md + scripts/references；Hub 落盘，watch 自动同步 |
-| 抽取 | LLM 抽取/去重/冲突 | 规则 + 可选 LLM（已用真实 OpenAI 兼容端点验证，失败回退规则）；语义去重未接 |
+| 技能 | 候选→验证→晋升 | 文件夹包：SKILL.md + scripts/references；Hub 落盘，AI 通过 skill_install 维护 |
+| 抽取 | 服务端 LLM 抽取/去重/冲突 | 不内置 LLM；AI 客户端直接调用 memory_write；服务端只校验 |
 | 鉴权 | 账号/OIDC + 设备 token | 单一 Bearer token |
 | 部署 | Docker Compose | Dockerfile/compose 已提供；本机 Docker Hub 不可达，未完成构建验证 |
-| 控制台 | Web 管理/审核 | Material 3 单页 Web UI（概览/收件箱/记忆/候选/文档/技能/身份） |
-| 自动化 | 自动采集/同步 | `membridge watch` 同步 docs/、skill 文件夹、inbox；MCP 任务结束写回 |
-| 评测 | CrossProjectBench + 消融 | 34 个功能测试，迁移实验未开始 |
+| 控制台 | Web 管理/审核 | Material 3 单页只读 UI（概览/记忆/文档/技能/身份/活动/连接） |
+| 自动化 | 自动采集/同步 | AI 主动调用 `memory_write` / `doc_add` / `skill_install` / `identity_update`；无候选/批准；UI 只读 |
+| 评测 | CrossProjectBench + 消融 | 27 个功能测试，迁移实验未开始 |
 
 ## 8. 待定项
 
