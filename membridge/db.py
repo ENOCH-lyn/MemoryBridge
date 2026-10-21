@@ -127,8 +127,13 @@ CREATE TABLE IF NOT EXISTS skills (
     id            TEXT PRIMARY KEY,
     project_id    TEXT REFERENCES projects(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
+    slug          TEXT,
     trigger       TEXT NOT NULL,
+    description   TEXT,
     steps_json    TEXT NOT NULL DEFAULT '[]',
+    manifest_json TEXT NOT NULL DEFAULT '{}',
+    dir_path      TEXT,
+    file_count    INTEGER NOT NULL DEFAULT 0,
     status        TEXT NOT NULL DEFAULT 'candidate',
     success_count INTEGER NOT NULL DEFAULT 0,
     failure_count INTEGER NOT NULL DEFAULT 0,
@@ -186,6 +191,16 @@ def init_db(conn: sqlite3.Connection) -> None:
         if column not in memory_columns:
             conn.execute(f"ALTER TABLE memories ADD COLUMN {column} {ddl}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash, status)")
+    skill_columns = {row[1] for row in conn.execute("PRAGMA table_info(skills)").fetchall()}
+    for column, ddl in {
+        "slug": "TEXT",
+        "description": "TEXT",
+        "manifest_json": "TEXT NOT NULL DEFAULT '{}'",
+        "dir_path": "TEXT",
+        "file_count": "INTEGER NOT NULL DEFAULT 0",
+    }.items():
+        if column not in skill_columns:
+            conn.execute(f"ALTER TABLE skills ADD COLUMN {column} {ddl}")
     now = utcnow()
     conn.execute(
         """

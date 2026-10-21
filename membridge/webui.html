@@ -181,7 +181,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
     <div class="brand" aria-hidden="true">M</div>
     <nav id="nav" aria-label="主导航">
       <button class="rail-item active" data-tab="overview"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg></span><span>概览</span></button>
-      <button class="rail-item" data-tab="capture"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></span><span>采集</span></button>
+      <button class="rail-item" data-tab="capture"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></span><span>收件箱</span></button>
       <button class="rail-item" data-tab="memory"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M12 2C7.58 2 4 3.79 4 6v12c0 2.21 3.58 4 8 4s8-1.79 8-4V6c0-2.21-3.58-4-8-4zm0 2c3.87 0 6 1.5 6 2s-2.13 2-6 2-6-1.5-6-2 2.13-2 6-2zm6 14c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.73 3.68 1.23 6 1.23s4.39-.5 6-1.23V18zm0-5c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23C7.61 11.5 9.68 12 12 12s4.39-.5 6-1.23V13z"/></svg></span><span>记忆</span><span class="badge" id="badgeMem" hidden>0</span></button>
       <button class="rail-item" data-tab="candidates"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm0 12h-4a4 4 0 01-8 0H5V5h14v10z"/></svg></span><span>候选</span><span class="badge" id="badgeCand" hidden>0</span></button>
       <button class="rail-item" data-tab="docs"><span class="indicator"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm2 18H6V4h7v5h5v11z"/></svg></span><span>文档</span></button>
@@ -224,8 +224,8 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
         </div>
         <div class="grid-2" style="margin-top:16px">
           <div class="card">
-            <h2 class="section-title">快速采集</h2>
-            <p class="section-sub">粘贴对话或笔记，抽取候选记忆；候选批准前不参与检索。</p>
+            <h2 class="section-title">手动补录（fallback）</h2>
+            <p class="section-sub">正常使用交给 <span class="code" style="display:inline;padding:2px 5px">membridge watch</span>；这里只做临时补录。</p>
             <div class="form">
               <div class="field"><label for="quickText">原文</label><textarea id="quickText" placeholder="例如：以后都用中文提交信息。我们决定用 SQLite 而不是 Postgres。"></textarea></div>
               <div class="inline"><button class="filled-btn" id="quickIngest">抽取候选</button><span class="hint" id="quickResult"></span></div>
@@ -241,24 +241,36 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
           <h2 class="section-title">第一次使用</h2>
           <div class="grid-3" style="margin-top:12px">
             <div><div class="eyebrow">01 · 连接</div><p class="hint">Hub 在本机无 token 模式会直接连上；云端模式需填 Bearer token。</p></div>
-            <div><div class="eyebrow">02 · 采集</div><p class="hint">把对话粘进采集页，批准有价值的候选；拒绝的内容不会重复提出。</p></div>
+            <div><div class="eyebrow">02 · 自动同步</div><p class="hint">把 transcript 放进 .membridge/inbox，运行 <span class="code" style="display:inline;padding:2px 5px">membridge watch</span>；docs 和 skills 目录也会自动同步。</p></div>
             <div><div class="eyebrow">03 · 在 agent 里用</div><p class="hint">MCP 客户端连 Hub 的本地 proxy；新会话先调用 agent_bootstrap。</p></div>
           </div>
         </div>
       </section>
 
       <section class="tab" id="tab-capture">
-        <div class="grid-2">
+        <div class="card elevated">
+          <div class="inline" style="justify-content:space-between;align-items:flex-start">
+            <div><h2 class="section-title">自动同步</h2><p class="section-sub">正常流程不需要手动“采集”：把 transcript 放进 <span class="code" style="display:inline;padding:2px 5px">.membridge/inbox</span>，watch 会抽取候选；docs/ 和 skills/ 也会自动同步。</p></div>
+            <span class="chip ok">membridge watch</span>
+          </div>
+          <div class="code" id="watchSnippet"></div>
+          <div class="grid-3" style="margin-top:16px">
+            <div><div class="eyebrow">01 · 初始化</div><p class="hint"><span class="code" style="display:inline;padding:2px 5px">membridge init-project --path .</span> 创建收件箱、技能目录和本地状态。</p></div>
+            <div><div class="eyebrow">02 · 持续同步</div><p class="hint">watch 轮询 docs/、.membridge/skills/、.membridge/inbox/，增量推送；已处理的文件不会重复抽取。需要免审核可加 <span class="code" style="display:inline;padding:2px 5px">--auto-activate</span>。</p></div>
+            <div><div class="eyebrow">03 · 只做审核</div><p class="hint">你只需要在「候选」里批准/拒绝；不用手工把对话粘进来。</p></div>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:16px">
           <div class="card">
-            <h2 class="section-title">采集一段对话</h2>
-            <p class="section-sub">原始文本会作为 Episode 留存，抽取结果进入候选审核。</p>
+            <h2 class="section-title">手动补录（fallback）</h2>
+            <p class="section-sub">临时测试或没有 watch 时使用；正常使用请把文本放进收件箱。</p>
             <div class="form">
-              <div class="field"><label for="ingestText">原文</label><textarea id="ingestText" style="min-height:240px" placeholder="粘贴对话、会议记录或笔记……"></textarea></div>
+              <div class="field"><label for="ingestText">原文</label><textarea id="ingestText" style="min-height:180px" placeholder="粘贴对话、会议记录或笔记……"></textarea></div>
               <div class="inline">
                 <label class="check"><input type="checkbox" id="ingestAuto"> 高置信直接激活</label>
                 <label class="check"><input type="checkbox" id="ingestLLM"> 使用 LLM（如已配置）</label>
               </div>
-              <div class="inline"><button class="filled-btn" id="ingestBtn">抽取</button><span class="hint" id="ingestState"></span></div>
+              <div class="inline"><button class="filled-btn" id="ingestBtn">补录并抽取</button><span class="hint" id="ingestState"></span></div>
             </div>
           </div>
           <div class="card">
@@ -310,18 +322,21 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
       <section class="tab" id="tab-skills">
         <div class="grid-2">
           <div class="card">
-            <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">技能</h2><p class="section-sub">可复用流程，带触发条件与步骤。</p></div><button class="text-btn" id="skillReload">刷新</button></div>
+            <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">技能文件夹</h2><p class="section-sub">每个 skill 是一个目录：SKILL.md + scripts/references/assets；不再是一段 steps 文本。</p></div><button class="text-btn" id="skillReload">刷新</button></div>
             <div class="list" id="skillList" style="margin-top:16px"><div class="empty">加载中…</div></div>
           </div>
           <div class="card">
-            <h2 class="section-title">添加技能</h2>
-            <p class="section-sub">先作为 candidate 保存；后续可接验证与晋升。</p>
-            <div class="form">
-              <div class="field"><label for="skillName">名称</label><input id="skillName" placeholder="Windows pytest 路径修复"></div>
-              <div class="field"><label for="skillTrigger">触发条件</label><input id="skillTrigger" placeholder="pytest 在 Windows 上因路径含空格失败"></div>
-              <div class="field"><label for="skillSteps">步骤（每行一步）</label><textarea id="skillSteps" placeholder="用 pathlib.Path 构造路径&#10;subprocess 调用时为路径加引号"></textarea></div>
-              <div class="inline"><button class="filled-btn" id="skillAdd">保存</button><span class="hint" id="skillState"></span></div>
-            </div>
+            <h2 class="section-title">安装技能文件夹</h2>
+            <p class="section-sub">选择一个包含 SKILL.md 的目录；文本文件会一起上传，保留相对路径。</p>
+            <input type="file" id="skillFolder" webkitdirectory multiple hidden>
+            <div class="inline"><button class="filled-btn" id="skillInstallBtn">选择文件夹</button><span class="hint" id="skillState"></span></div>
+            <hr class="divider">
+            <h3 class="section-title">目录结构</h3>
+            <div class="code">.membridge/skills/my-skill/
+├─ SKILL.md          # YAML frontmatter + 指令
+├─ scripts/check.ps1
+└─ references/notes.md</div>
+            <p class="hint" style="margin-top:12px">把目录放进 <span class="code" style="display:inline;padding:2px 5px">.membridge/skills/</span> 后，<span class="code" style="display:inline;padding:2px 5px">membridge watch</span> 会自动安装/更新。</p>
           </div>
         </div>
       </section>
@@ -374,7 +389,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
   </main>
 </div>
 
-<button class="fab" id="fabCapture" aria-label="新建采集"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
+<button class="fab" id="fabCapture" aria-label="打开收件箱"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
 <div class="snackbar" id="snackbar" role="status"></div>
 <dialog id="dialog"><div class="dialog-head"><h2 id="dialogTitle">详情</h2><button class="icon-btn small" id="dialogClose" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M18.3 5.71L12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.3 19.71 2.89 18.3 9.17 12 2.89 5.71 4.3 4.29l6.29 6.3 6.3-6.3 1.41 1.42z"/></svg></button></div><div class="dialog-body" id="dialogBody"></div></dialog>
 
@@ -388,7 +403,7 @@ const state = {
 };
 const titles = {
   overview:['概览','同一个 agent，换设备不重来'],
-  capture:['采集','把对话变成可审核的记忆'],
+  capture:['收件箱','自动同步 + 手动补录'],
   memory:['记忆','检索、编辑、删除'],
   candidates:['候选','批准后才进入检索'],
   docs:['文档','Markdown / ADR 知识库'],
@@ -438,7 +453,7 @@ function mcpSnippet(){
 }
 async function bootstrap(){
   const data=await rpc('bootstrap',[],{project_path:state.project||null,client:'web'});
-  state.ctx=data.context_version; state.identity=data.identity;
+  state.ctx=data.context_version; state.identity=data.identity; state.available=data.available||null;
   $('#ctxBadge').textContent='ctx '+state.ctx.slice(4,12);
   $('#ctxBadge').className='chip ok';
   renderOverview();
@@ -468,17 +483,18 @@ function switchTab(tab, updateHash=true){
 }
 function renderOverview(){
   const c=(state.status&&state.status.counts)||{};
+  const a=state.available||{};
   const id=(state.status&&state.status.identity)||state.identity||{};
   $('#ovName').textContent=id.name||'—';
   $('#ovPersona').textContent=id.persona||'连接 Hub 后显示人格与记忆状态。';
-  $('#ovMemories').textContent=c.memories_active??0;
-  $('#ovCandidates').textContent=c.memories_candidate??0;
-  $('#ovDocs').textContent=c.documents??0;
-  $('#ovSkills').textContent=c.skills??0;
+  $('#ovMemories').textContent=a.memories??c.memories_active??0;
+  $('#ovCandidates').textContent=a.candidates??c.memories_candidate??0;
+  $('#ovDocs').textContent=a.documents??c.documents??0;
+  $('#ovSkills').textContent=a.skills??c.skills??0;
   $('#ovCtx').textContent=state.ctx?'已绑定':'—';
   $('#ovCtxShort').textContent=state.ctx?state.ctx:'身份 + 指令 + 项目约定';
   const badgeMem=$('#badgeMem'), badgeCand=$('#badgeCand');
-  const active=c.memories_active??0, cand=c.memories_candidate??0;
+  const active=a.memories??c.memories_active??0, cand=a.candidates??c.memories_candidate??0;
   badgeMem.hidden=!active; badgeMem.textContent=active;
   badgeCand.hidden=!cand; badgeCand.textContent=cand;
   const llm=(state.status&&state.status.llm)||{};
@@ -519,6 +535,7 @@ async function loadCandidates(){
   $('#candList').innerHTML=items.length?items.map(m=>`<div class="item"><div class="row-meta"><span class="type candidate">candidate</span><span class="type ${esc(m.type)}">${esc(m.type)}</span><span class="hint">conf ${esc(m.confidence)}</span></div><div class="text">${esc(m.content)}</div>${(m.evidence_quote&&m.evidence_quote!==m.content)?`<div class="quote">${esc(m.evidence_quote)}</div>`:''}<div class="actions"><button class="filled-btn" style="height:32px;padding:0 14px" data-action="approve" data-id="${esc(m.id)}">批准</button><button class="outlined-btn" style="height:32px;padding:0 12px" data-action="reject" data-id="${esc(m.id)}">拒绝</button></div></div>`).join(''):'<div class="empty">没有待审核候选</div>';
   $('#ovCandidatesList').innerHTML=items.slice(0,3).map(m=>`<div class="item"><div class="row-meta"><span class="type candidate">candidate</span><span class="type ${esc(m.type)}">${esc(m.type)}</span></div><div class="text">${esc(m.content)}</div></div>`).join('')||'<div class="empty">还没有候选</div>';
   const b=$('#badgeCand'); b.hidden=!items.length; b.textContent=items.length;
+  $('#ovCandidates').textContent=items.length;
 }
 async function loadDocs(){
   if(!state.ctx) return;
@@ -528,11 +545,12 @@ async function loadDocs(){
 async function loadSkills(){
   if(!state.ctx) return;
   const data=await rpc('skill_list',[state.ctx]); const items=data.items||[];
-  $('#skillList').innerHTML=items.length?items.map(s=>`<div class="item"><div class="row-meta"><span class="type ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="hint">${esc(s.name)}</span></div><div class="text"><b>触发：</b>${esc(s.trigger)}</div><div class="quote">${(s.steps||[]).map((x,i)=>`${i+1}. ${esc(x)}`).join('<br>')}</div></div>`).join(''):'<div class="empty">没有技能</div>';
+  $('#skillList').innerHTML=items.length?items.map(s=>`<div class="item"><div class="row-meta"><span class="type">folder</span><span class="type ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="hint">${esc(s.file_count||1)} files</span></div><div class="text"><b>${esc(s.name)}</b></div><div class="quote">${esc(s.description||s.trigger||'')}</div><div class="actions"><button class="tonal-btn" style="height:32px;padding:0 12px" data-action="read-skill" data-id="${esc(s.id)}">查看文件夹</button></div></div>`).join(''):'<div class="empty">还没有技能文件夹</div>';
 }
 async function loadTab(tab){
   try{
     if(tab==='overview') await loadCandidates();
+    if(tab==='capture'){ $('#watchSnippet').textContent=watchSnippet(); }
     if(tab==='memory') await loadMemories();
     if(tab==='candidates') await loadCandidates();
     if(tab==='docs') await loadDocs();
@@ -551,7 +569,18 @@ function ingestResultHTML(data){
   const cs=data.candidates||[];
   return meta+(cs.length?cs.map(c=>`<div class="item"><div class="row-meta"><span class="type candidate">${esc(c.status)}</span><span class="type ${esc(c.type)}">${esc(c.type)}</span><span class="hint">conf ${esc(c.confidence)}</span></div><div class="text">${esc(c.content)}</div>${(c.evidence_quote&&c.evidence_quote!==c.content)?`<div class="quote">${esc(c.evidence_quote)}</div>`:''}</div>`).join(''):'<div class="empty">没有抽取到候选</div>');
 }
-function openDialog(title, body){ $('#dialogTitle').textContent=title; $('#dialogBody').textContent=body; $('#dialog').showModal(); }
+function openDialog(title, body){ const d=$('#dialog'); $('#dialogTitle').textContent=title; $('#dialogBody').textContent=body; if(!d.open) d.showModal(); }
+function watchSnippet(){
+  const remote=state.token?` --remote ${location.origin} --token $env:MEMBRIDGE_TOKEN`:` --remote ${location.origin}`;
+  return `membridge init-project --path .\nmembridge watch --project-path .${remote}`;
+}
+async function openSkill(id){
+  const s=await rpc('skill_get',[state.ctx,id]);
+  const files=(s.files||[]).map(f=>`<button class="tonal-btn" style="height:30px;padding:0 10px;margin:4px" data-action="skill-file" data-id="${esc(id)}" data-path="${esc(f.path)}">${esc(f.path)} <span class="hint">${f.size}b</span></button>`).join('');
+  $('#dialogTitle').textContent=s.name||'Skill';
+  $('#dialogBody').innerHTML=`<div class="hint" style="margin-bottom:8px">${esc(s.file_count||0)} files · ${esc(s.status)} · ${esc(s.dir_path||'')}</div><div class="inline">${files}</div><hr class="divider"><pre class="code" style="margin:0">${esc(s.skill_md||'')}</pre>`;
+  const d=$('#dialog'); if(!d.open) d.showModal();
+}
 function initTheme(){
   const saved=localStorage.getItem('mb_theme');
   if(saved==='dark') document.documentElement.dataset.theme='dark';
@@ -570,8 +599,7 @@ $$('[data-tab]').forEach(btn=>{
 });
 $('#themeToggle').addEventListener('click',toggleTheme);
 $('#refreshBtn').addEventListener('click',refreshAll);
-$('#fabCapture').addEventListener('click',()=>switchTab('capture'));
-$('#quickIngest').addEventListener('click',async()=>{
+$('#fabCapture').addEventListener('click',()=>switchTab('capture'));$('#quickIngest').addEventListener('click',async()=>{
   try{ const data=await ingest($('#quickText').value,false,null); $('#quickResult').textContent=`新建 ${data.counts.created} · 重复 ${data.counts.duplicates}`; snack('已抽取候选'); await refreshStatus(); await loadCandidates(); }
   catch(e){ snack(String(e.message),'err'); }
 });
@@ -601,14 +629,24 @@ $('#docAdd').addEventListener('click',async()=>{
     $('#docState').textContent='已保存'; snack('文档已保存'); await loadDocs();
   }catch(e){ snack(String(e.message),'err'); }
 });
-$('#skillAdd').addEventListener('click',async()=>{
+$('#skillInstallBtn').addEventListener('click',()=>$('#skillFolder').click());
+$('#skillFolder').addEventListener('change',async()=>{
   try{
-    const name=$('#skillName').value.trim(), trigger=$('#skillTrigger').value.trim();
-    const steps=$('#skillSteps').value.split('\n').map(s=>s.trim()).filter(Boolean);
-    if(!name||!trigger||!steps.length) throw new Error('名称/触发/步骤不能为空');
-    await rpc('skill_add',[state.ctx],{name,trigger,steps});
-    $('#skillState').textContent='已保存'; snack('技能已保存'); await loadSkills();
-  }catch(e){ snack(String(e.message),'err'); }
+    const input=$('#skillFolder');
+    const picked=Array.from(input.files||[]);
+    if(!picked.length) return;
+    const files={};
+    for(const file of picked){
+      if(file.size>1024*1024) continue;
+      const rel=(file.webkitRelativePath||file.name).split('/').slice(1).join('/')||file.name;
+      files[rel]=await file.text();
+    }
+    if(!Object.keys(files).some(p=>p.toLowerCase()==='skill.md')) throw new Error('选择的文件夹必须包含 SKILL.md');
+    $('#skillState').textContent='上传中…';
+    const result=await rpc('skill_install',[state.ctx],{files});
+    $('#skillState').textContent=`已安装 ${result.file_count} 个文件`;
+    snack('技能文件夹已安装'); input.value=''; await loadSkills();
+  }catch(e){ $('#skillState').textContent=''; snack(String(e.message),'err'); $('#skillFolder').value=''; }
 });
 $('#setSave').addEventListener('click',async()=>{ saveSettings(); await refreshAll(); });
 $('#setClear').addEventListener('click',async()=>{ state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value=''; snack('token 已清除'); await health(); });
@@ -632,6 +670,8 @@ document.addEventListener('click',async e=>{
     if(action==='delete-memory'){ if(!confirm('删除这条记忆？')) return; await rpc('memory_delete',[state.ctx,id]); snack('已删除'); await loadMemories(); await refreshStatus(); }
     if(action==='edit-memory'){ const value=prompt('修改内容（留空取消）：'); if(value===null||!value.trim()) return; await rpc('memory_update',[state.ctx,id],{content:value}); snack('已更新'); await loadMemories(); }
     if(action==='read-doc'){ const doc=await rpc('doc_read',[state.ctx,id]); openDialog(doc.title||doc.path,doc.content||''); }
+    if(action==='read-skill'){ await openSkill(id); }
+    if(action==='skill-file'){ const file=await rpc('skill_file',[state.ctx,id,btn.dataset.path]); openDialog(btn.dataset.path,file.content||''); }
   }catch(err){ snack(String(err.message),'err'); }
 });
 

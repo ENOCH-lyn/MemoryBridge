@@ -13,6 +13,7 @@ from .mcp_server import run_stdio
 from .remote import RemoteService, run_hub
 from .seed import seed as seed_data
 from .service import AgentSyncService
+from .sync import SyncEngine, init_project as init_project_dir, watch as watch_project
 
 
 DEFAULT_DB = os.environ.get("MEMBRIDGE_DB", "membridge.db")
@@ -231,6 +232,25 @@ def cmd_skills(args) -> int:
     elif args.skills_command == "get":
         bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
         result = svc.skill_get(bootstrap["context_version"], args.skill_id)
+    elif args.skills_command == "file":
+        bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+        result = svc.skill_file(bootstrap["context_version"], args.skill_id, args.path)
+    elif args.skills_command == "install":
+        folder = Path(args.dir).expanduser().resolve()
+        if not (folder / "SKILL.md").exists():
+            raise SystemExit(f"SKILL.md not found in {folder}")
+        files = {}
+        for path in sorted(folder.rglob("*")):
+            if not path.is_file():
+                continue
+            if path.stat().st_size > 1024 * 1024:
+                raise SystemExit(f"file too large: {path}")
+            try:
+                files[path.relative_to(folder).as_posix()] = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+        bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+        result = svc.skill_install(bootstrap["context_version"], files=files)
     elif args.skills_command == "add":
         bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
         result = svc.skill_add(
@@ -243,6 +263,42 @@ def cmd_skills(args) -> int:
         raise SystemExit("unknown skills command")
     _print(result, True)
     svc.close()
+    return 0
+
+
+def _backend(args):
+    remote = getattr(args, "remote", None)
+    if remote:
+        token = getattr(args, "token", None) or os.environ.get("MEMBRIDGE_TOKEN", "")
+        return RemoteService(remote, token=token)
+    return _service(args)
+
+
+def cmd_init_project(args) -> int:
+    result = init_project_dir(args.path)
+    _print(result, True)
+    return 0
+
+
+def cmd_sync(args) -> int:
+    service = _backend(args)
+    try:
+        engine = SyncEngine(service, args.project_path, auto_activate=bool(getattr(args, "auto_activate", False)))
+        result = engine.sync_once()
+        _print(result, True)
+    finally:
+        service.close()
+    return 0
+
+
+def cmd_watch(args) -> int:
+    service = _backend(args)
+    try:
+        watch_project(service, args.project_path, interval=args.interval, auto_activate=bool(getattr(args, "auto_activate", False)))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        service.close()
     return 0
 
 
@@ -422,12 +478,40 @@ def build_parser() -> argparse.ArgumentParser:
     get.add_argument("skill_id")
     get.add_argument("--project-path", default=None)
     get.set_defaults(func=cmd_skills, skills_command="get")
+    file_parser = p_sub.add_parser("file")
+    file_parser.add_argument("skill_id")
+    file_parser.add_argument("path")
+    file_parser.add_argument("--project-path", default=None)
+    file_parser.set_defaults(func=cmd_skills, skills_command="file")
+    install = p_sub.add_parser("install")
+    install.add_argument("dir")
+    install.add_argument("--project-path", default=None)
+    install.set_defaults(func=cmd_skills, skills_command="install")
     add = p_sub.add_parser("add")
     add.add_argument("name")
     add.add_argument("--trigger", required=True)
     add.add_argument("--step", action="append")
     add.add_argument("--project-path", default=None)
     add.set_defaults(func=cmd_skills, skills_command="add")
+
+    p = sub.add_parser("init-project", help="create .membridge/{inbox,skills}")
+    p.add_argument("--path", default=".")
+    p.set_defaults(func=cmd_init_project)
+
+    p = sub.add_parser("sync", help="sync docs/, .membridge/skills and .membridge/inbox once")
+    p.add_argument("--project-path", default=".")
+    p.add_argument("--remote", default=None)
+    p.add_argument("--token", default=None)
+    p.add_argument("--auto-activate", action="store_true")
+    p.set_defaults(func=cmd_sync)
+
+    p = sub.add_parser("watch", help="poll the project and sync changes continuously")
+    p.add_argument("--project-path", default=".")
+    p.add_argument("--interval", type=float, default=5.0)
+    p.add_argument("--remote", default=None)
+    p.add_argument("--token", default=None)
+    p.add_argument("--auto-activate", action="store_true")
+    p.set_defaults(func=cmd_watch)
 
     p = sub.add_parser("export", help="export all data as JSON")
     p.add_argument("--out", required=True)

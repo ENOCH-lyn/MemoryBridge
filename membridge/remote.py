@@ -48,6 +48,8 @@ ALLOWED_METHODS = {
     "doc_search",
     "doc_read",
     "skill_add",
+    "skill_install",
+    "skill_file",
     "skill_list",
     "skill_get",
     "project_context",

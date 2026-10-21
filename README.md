@@ -2,8 +2,8 @@
 
 忆桥是一个**自部署的 Agent 身份 / 记忆 / 能力同步器**：任何支持 MCP 的客户端，只要连上同一个 MemoryBridge，agent 在每次新会话先 `agent_bootstrap`，就能拿回同一份人格、全局指令、项目上下文、记忆、文档和技能。
 
-> **当前状态：可运行 MVP（MCP stdio + HTTP Hub + Web 控制台 + 可选 LLM 抽取）**。
-> 已实现 Identity / Bootstrap Gate / Episode / 规则或 LLM 抽取 / 候选审核 / 记忆 / 文档 / 技能 / CLI / 跨设备 Hub / 测试；向量检索、op log/冲突合并、TLS/账号体系是下一阶段。
+> **当前状态：可运行 MVP（MCP stdio + HTTP Hub + Material 3 Web 控制台 + 文件夹技能 + 自动同步）**。
+> 已实现 Identity / Bootstrap Gate / Episode / 规则或 LLM 抽取 / 候选审核 / 记忆 / 文档 / 文件夹技能 / watch 自动同步 / CLI / 跨设备 Hub / 测试；向量检索、op log/冲突合并、TLS/账号体系是下一阶段。
 
 ## 现在能做到什么
 
@@ -12,9 +12,10 @@
 - **项目隔离**：按 git remote 或目录名建稳定 project；默认检索“当前项目 + 全局”，不会把 A 项目私有记忆串到 B 项目。
 - **记忆**：事实 / 偏好 / 决策 / 教训 / 流程 / 文档引用；中文双字 + 英文词检索；反馈会调整置信度。
 - **Capture & Curation**：`memory_ingest` 把原始对话存成 Episode，用规则或可选 LLM 抽取候选记忆；候选默认不可检索，批准后才进入 active，保留 `evidence_quote` 与 `episode_id`。
-- **Web 控制台**：Hub 自带单页 UI（概览 / 采集 / 记忆 / 候选 / 文档 / 技能 / 身份 / 连接），浏览器直接管理，无需 Node 构建。
+- **自动同步**：`membridge watch` 轮询 `docs/`、`.membridge/skills/`、`.membridge/inbox/`，增量推送；不需要手工“采集”。
+- **Web 控制台**：Hub 自带 Material 3 单页 UI（概览 / 收件箱 / 记忆 / 候选 / 文档 / 技能 / 身份 / 连接），浏览器直接管理，无需 Node 构建。
 - **文档**：Markdown/ADR 作为一等记忆，支持写入、搜索、按 id 读取。
-- **技能**：可复用流程的候选/已验证状态，支持触发条件与步骤。
+- **技能**：每个 skill 是文件夹（`SKILL.md` + `scripts/`/`references/`/`assets/`），Hub 落盘保存，支持目录上传和文件读取，不再是一段 steps 文本。
 - **跨设备**：一台设备/服务器跑 `hub`，其他设备用 `serve --remote` 做本地 MCP proxy；连的是同一份身份与记忆。
 - **零外部依赖**：Python 3.11+ 标准库 + SQLite；单文件数据库，可拷贝、可导出。
 - **MCP 协议**：`initialize` 带 `instructions`；工具带描述与 annotations；另有 `memory://identity` 资源和 `recall_for_task` prompt。
@@ -151,6 +152,15 @@ python -m membridge --db .\data\membridge-local.db hub --host 127.0.0.1 --port 8
 
 浏览器打开 `http://127.0.0.1:8788/`。控制台默认项目是 `demo`；在「连接」里改成你自己的项目路径即可。数据库在 `data/membridge-local.db`，删除即可重置。
 
+自动同步一个真实项目（另开一个终端）：
+
+```powershell
+membridge init-project --path C:\path\to\your\project
+membridge watch --project-path C:\path\to\your\project --remote http://127.0.0.1:8788
+```
+
+把 transcript 放进 `.membridge/inbox/`，文档放进 `docs/`，技能文件夹放进 `.membridge/skills/`；watch 会自动推送，你只在「候选」里审核。
+
 ## Web 控制台
 
 Hub 启动后，浏览器打开：
@@ -165,12 +175,12 @@ http://HUB_IP:8787/
 
 ![MemoryBridge Web 控制台](doc/assets/webui.png)
 
-- **概览**：身份、活跃记忆、候选数、抽取器状态、快速采集。
-- **采集**：粘贴对话，选择“高置信直接激活 / 使用 LLM”，查看抽取结果。
+- **概览**：身份、活跃记忆、候选数、抽取器状态、手动补录。
+- **收件箱**：显示 `membridge watch` 命令和自动同步流程；手动粘贴仅作 fallback。
 - **记忆**：搜索、查看证据、编辑内容、软删除。
 - **候选**：批准 / 拒绝；候选批准前不参与检索。
-- **文档**：列表、查看、添加/更新 Markdown。
-- **技能**：列表、添加。
+- **文档**：列表、查看、添加/更新 Markdown；`watch` 会自动同步 `docs/`。
+- **技能**：文件夹列表、目录查看、单文件读取、上传整个技能目录。
 - **身份**：改人格、称呼、语气、边界；保存后所有设备下一次 bootstrap 生效。
 - **连接**：token、项目路径、MCP 配置片段、JSON 导出、健康检查。
 
@@ -220,6 +230,11 @@ python -m membridge --db .\membridge.db docs add .\docs\adr.md --project-path .
 python -m membridge --db .\membridge.db docs list --project-path .
 python -m membridge --db .\membridge.db docs search "SQLite" --project-path .
 python -m membridge --db .\membridge.db skills list --project-path .
+python -m membridge --db .\membridge.db skills install .\.membridge\skills\my-skill --project-path .
+python -m membridge --db .\membridge.db skills file skill_xxx scripts/check.ps1 --project-path .
+python -m membridge init-project --path .\my-project
+python -m membridge sync --project-path .\my-project --remote http://127.0.0.1:8787
+python -m membridge watch --project-path .\my-project --remote http://127.0.0.1:8787 --interval 5
 python -m membridge --db .\membridge.db export --out .\backup.json
 python -m membridge --db .\membridge.db import --in .\backup.json
 python -m membridge --db .\membridge.db hub --host 0.0.0.0 --port 8787
@@ -239,7 +254,7 @@ python -m membridge serve --remote http://127.0.0.1:8787 --token $env:MEMBRIDGE_
 | Episode | 原始对话/文档片段，候选记忆的证据来源 |
 | Candidate | 抽取后待审核的记忆；默认不可检索，approve 后 active |
 | Document | Markdown/ADR，按项目挂载，可被检索与引用 |
-| Skill | 触发条件 + 步骤 + 状态（candidate/validated/global） |
+| Skill | 文件夹包：`SKILL.md` + scripts/references/assets + 状态（candidate/validated/global） |
 | context_version | 身份 + 指令 + 项目约定的哈希；变更后旧会话失效 |
 | Bootstrap Gate | 没有有效 context_version，记忆/文档/技能工具一律拒绝 |
 
@@ -251,7 +266,8 @@ membridge/
 ├─ service.py     Identity、Bootstrap、记忆、Episode、审核、文档、技能
 ├─ extract.py     规则抽取（Episode → candidate）
 ├─ llm.py         可选 LLM 抽取（OpenAI 兼容，失败回退规则）
-├─ webui.html     Hub 自带的单页控制台
+├─ sync.py        本地 docs/skills/inbox 自动同步 + watch
+├─ webui.html     Hub 自带的 Material 3 控制台
 ├─ mcp_server.py  MCP stdio JSON-RPC、工具 schema、Gate 错误
 ├─ remote.py      HTTP Hub + RemoteService（MCP proxy）
 ├─ cli.py         命令行
@@ -261,6 +277,7 @@ tests/
 ├─ test_capture.py  Episode/抽取/审核/去重/更新/删除
 ├─ test_mcp.py      MCP initialize / tools / bootstrap / 跨进程 context
 ├─ test_remote.py   Hub / RemoteService / MCP proxy / 鉴权
+├─ test_skills_sync.py  文件夹技能 / 路径安全 / 项目 sync 幂等
 └─ test_llm_webui.py  LLM 抽取/回退、Web UI / health
 ```
 
@@ -276,10 +293,11 @@ tests/
 
 - **远程是 proxy + Hub**：本地 MCP proxy 连 HTTP Hub，不是原生 MCP streamable HTTP；Hub 是中心 SQLite 单点。
 - **Hub 安全**：只有 Bearer token，没有账号/TLS；公网必须放在 Tailscale / Cloudflare Tunnel / Caddy 之后。
-- **抽取是规则 + 可选 LLM**：`extract.py` 规则始终可用；配置 `MEMBRIDGE_LLM_*` 后优先调 LLM，失败回退规则。语义去重/字段级冲突未接。
+- **抽取是规则 + 可选 LLM**：`extract.py` 规则始终可用；配置 `MEMBRIDGE_LLM_*` 后优先调 LLM，失败回退规则。已用真实 OpenAI 兼容端点验证抽取，语义去重/字段级冲突未接。
+- **自动同步是轮询**：`membridge watch` 监听 inbox/docs/skills，默认 5 秒；不是 OS 级 conversation hook，也不处理文件删除/重命名。
 - **没有向量检索**：中文用双字、英文用词匹配；embedding/rerank 未接。
 - **没有 op log / 字段级冲突**：软删除有墓碑，但 Hub 模式下并发写同一记忆是最后写入生效；导入是 `INSERT OR IGNORE`。
-- **技能晋升未做审核 UI**：目前 CLI/工具直接写，后续加“候选 → 验证 → 晋升”。
+- **技能晋升未做审核 UI**：文件夹安装/读取已做，candidate → validated 的晋升仍靠 CLI/工具。
 
 ## 测试
 
@@ -287,7 +305,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 30 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote）、context 失效、猫娘人格、Episode/抽取/审核/去重/更新/删除、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 ingest/review、LLM 抽取/回退、Web UI/health。
+当前 34 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote）、context 失效、猫娘人格、Episode/抽取/审核/去重/更新/删除、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 ingest/review、LLM 抽取/回退、Web UI/health、文件夹技能/路径安全、项目 sync 幂等。
 
 ## 文档
 

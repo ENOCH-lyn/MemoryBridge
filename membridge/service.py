@@ -6,8 +6,9 @@ import hashlib
 import math
 import re
 import configparser
+import shutil
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
@@ -123,6 +124,11 @@ class AgentSyncService:
     def __init__(self, db_path: str | Path, llm_config: LLMConfig | None = None):
         self.db_path = str(db_path)
         self.llm_config = llm_config or LLMConfig.from_env()
+        base = Path(db_path).expanduser()
+        if str(db_path) == ":memory:":
+            self.skill_root = Path.cwd() / ".membridge-memory" / "skills"
+        else:
+            self.skill_root = base.resolve().parent / "skills"
         self.conn = connect(db_path)
         init_db(self.conn)
 
@@ -447,8 +453,15 @@ class AgentSyncService:
             "next_actions": [
                 "Use memory_search for facts, decisions and lessons",
                 "Use doc_search / doc_read for project documents",
-                "Use skill_search / skill_get for reusable procedures",
+                "Use skill_list / skill_get / skill_file for folder-shaped skills",
+                "At task end, call memory_ingest with a concise durable summary",
             ],
+            "capture_contract": {
+                "mode": "automatic",
+                "when": "end_of_task",
+                "tool": "memory_ingest",
+                "note": "Do not ask the user to copy/paste transcripts; write durable decisions/lessons yourself.",
+            },
         }
 
     def _count(self, table: str, project_id: str | None) -> int:
@@ -1074,11 +1087,205 @@ class AgentSyncService:
             "id": row["id"],
             "project_id": row["project_id"],
             "name": row["name"],
+            "slug": row["slug"],
             "trigger": row["trigger"],
+            "description": row["description"],
             "steps": json_loads(row["steps_json"], []),
+            "manifest": json_loads(row["manifest_json"], {}),
+            "dir_path": row["dir_path"],
+            "file_count": row["file_count"],
             "status": row["status"],
             "success_count": row["success_count"],
             "failure_count": row["failure_count"],
+        }
+
+    @staticmethod
+    def _safe_skill_path(rel: str) -> str:
+        value = (rel or "").replace("\\", "/").strip()
+        if not value or value.startswith("/") or len(value) > 300:
+            raise ValueError(f"invalid skill file path: {rel!r}")
+        parts = PurePosixPath(value).parts
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError(f"invalid skill file path: {rel!r}")
+        return "/".join(parts)
+
+    @staticmethod
+    def _parse_skill_md(text: str) -> dict[str, Any]:
+        manifest: dict[str, Any] = {}
+        body = text
+        if text.startswith("---"):
+            end = text.find("\n---", 3)
+            if end >= 0:
+                header = text[3:end]
+                body = text[end + 4 :]
+                current_key: str | None = None
+                for raw in header.splitlines():
+                    line = raw.rstrip()
+                    if not line.strip() or line.lstrip().startswith("#"):
+                        continue
+                    if line.lstrip().startswith("- "):
+                        if current_key:
+                            manifest.setdefault(current_key, []).append(line.lstrip()[2:].strip().strip("'\""))
+                        continue
+                    if ":" in line and not line.startswith(" "):
+                        key, value = line.split(":", 1)
+                        key = key.strip().lower()
+                        value = value.strip().strip("'\"")
+                        if value:
+                            manifest[key] = value
+                            current_key = None
+                        else:
+                            manifest[key] = []
+                            current_key = key
+        title = ""
+        for line in body.splitlines():
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+        description = str(manifest.get("description") or "").strip()
+        if not description:
+            paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+            for para in paragraphs:
+                if not para.startswith("#"):
+                    description = para.replace("\n", " ")[:300]
+                    break
+        manifest["title"] = title
+        manifest["description"] = description
+        manifest["body"] = body.strip()
+        return manifest
+
+    def _skill_dir(self, skill_id: str) -> Path:
+        return self.skill_root / skill_id
+
+    def _write_skill_files(self, skill_id: str, files: dict[str, str]) -> list[dict[str, Any]]:
+        if not isinstance(files, dict) or not files:
+            raise ValueError("files must be a non-empty object")
+        if len(files) > 200:
+            raise ValueError("too many skill files (max 200)")
+        target = self._skill_dir(skill_id)
+        if target.exists():
+            shutil.rmtree(target)
+        target.mkdir(parents=True, exist_ok=True)
+        total = 0
+        written: list[dict[str, Any]] = []
+        for rel, content in files.items():
+            if not isinstance(content, str):
+                raise ValueError(f"skill file must be text: {rel}")
+            safe = self._safe_skill_path(rel)
+            encoded = content.encode("utf-8")
+            if len(encoded) > 1024 * 1024:
+                raise ValueError(f"skill file too large: {safe}")
+            total += len(encoded)
+            if total > 8 * 1024 * 1024:
+                raise ValueError("skill package too large (max 8MB)")
+            dest = target / safe
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content, encoding="utf-8")
+            written.append({"path": safe, "size": len(encoded)})
+        return sorted(written, key=lambda item: item["path"])
+
+    def _skill_files(self, skill_id: str) -> list[dict[str, Any]]:
+        root = self._skill_dir(skill_id)
+        if not root.exists():
+            return []
+        result = []
+        for path in sorted(root.rglob("*")):
+            if path.is_file():
+                result.append({"path": path.relative_to(root).as_posix(), "size": path.stat().st_size})
+        return result
+
+    def skill_install(
+        self,
+        context_version: str,
+        *,
+        files: dict[str, str],
+        name: str | None = None,
+        project_id: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        target = project_id if project_id is not None else session["project_id"]
+        if target == "global":
+            target = None
+        lowered = {key.lower(): key for key in files}
+        skill_md_key = lowered.get("skill.md")
+        if not skill_md_key:
+            raise ValueError("skill package must contain SKILL.md")
+        normalized_files = dict(files)
+        if skill_md_key != "SKILL.md":
+            normalized_files["SKILL.md"] = normalized_files.pop(skill_md_key)
+        manifest = self._parse_skill_md(normalized_files["SKILL.md"])
+        resolved_name = (name or str(manifest.get("name") or "") or manifest.get("title") or "skill").strip()
+        if not resolved_name:
+            raise ValueError("skill name is required")
+        slug_base = re.sub(r"[^a-z0-9]+", "-", resolved_name.lower()).strip("-")
+        slug = slug_base or "skill-" + hashlib.sha1(resolved_name.encode("utf-8")).hexdigest()[:8]
+        skill_id = "skill_" + hashlib.sha1(f"{target or 'global'}:{slug}".encode("utf-8")).hexdigest()[:16]
+        resolved_status = status or str(manifest.get("status") or "candidate")
+        if resolved_status not in {"candidate", "validated", "global"}:
+            resolved_status = "candidate"
+        steps = manifest.get("steps") or []
+        if isinstance(steps, str):
+            steps = [steps]
+        steps = [str(step) for step in steps if str(step).strip()]
+        written = self._write_skill_files(skill_id, normalized_files)
+        raw_trigger = manifest.get("description") or manifest.get("triggers") or resolved_name
+        trigger = " / ".join(str(x) for x in raw_trigger) if isinstance(raw_trigger, list) else str(raw_trigger)
+        description = str(manifest.get("description") or "")
+        now = utcnow()
+        existing = self.conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+        if existing:
+            self.conn.execute(
+                "UPDATE skills SET name = ?, slug = ?, trigger = ?, description = ?, steps_json = ?, "
+                "manifest_json = ?, dir_path = ?, file_count = ?, status = ?, updated_at = ? WHERE id = ?",
+                (
+                    resolved_name,
+                    slug,
+                    trigger,
+                    description,
+                    json_dumps(steps),
+                    json_dumps(manifest),
+                    skill_id,
+                    len(written),
+                    resolved_status,
+                    now,
+                    skill_id,
+                ),
+            )
+            action = "skill.update"
+        else:
+            self.conn.execute(
+                "INSERT INTO skills(id, project_id, name, slug, trigger, description, steps_json, manifest_json, "
+                "dir_path, file_count, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    skill_id,
+                    target,
+                    resolved_name,
+                    slug,
+                    trigger,
+                    description,
+                    json_dumps(steps),
+                    json_dumps(manifest),
+                    skill_id,
+                    len(written),
+                    resolved_status,
+                    now,
+                    now,
+                ),
+            )
+            action = "skill.install"
+        self._audit(action, skill_id, {"project_id": target, "files": len(written), "name": resolved_name})
+        self.conn.commit()
+        return {
+            "skill_id": skill_id,
+            "project_id": target,
+            "name": resolved_name,
+            "slug": slug,
+            "status": resolved_status,
+            "dir_path": skill_id,
+            "file_count": len(written),
+            "files": written,
         }
 
     def skill_add(
@@ -1091,20 +1298,31 @@ class AgentSyncService:
         project_id: str | None = None,
         status: str = "candidate",
     ) -> dict[str, Any]:
-        session = self.validate_context(context_version)
-        target = project_id if project_id is not None else session["project_id"]
-        if target == "global":
-            target = None
-        skill_id = new_id("skill")
-        now = utcnow()
-        self.conn.execute(
-            "INSERT INTO skills(id, project_id, name, trigger, steps_json, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (skill_id, target, name, trigger, json_dumps(steps), status, now, now),
+        step_lines = "\n".join(f"  - {step}" for step in steps)
+        skill_md = (
+            "---\n"
+            f"name: {json_dumps(name)}\n"
+            f"description: {json_dumps(trigger)}\n"
+            f"status: {status}\n"
+            "steps:\n"
+            f"{step_lines}\n"
+            "---\n\n"
+            f"# {name}\n\n"
+            f"{trigger}\n"
         )
-        self._audit("skill.add", skill_id, {"project_id": target, "name": name})
+        result = self.skill_install(
+            context_version,
+            files={"SKILL.md": skill_md},
+            name=name,
+            project_id=project_id,
+            status=status,
+        )
+        self.conn.execute(
+            "UPDATE skills SET steps_json = ? WHERE id = ?",
+            (json_dumps(steps), result["skill_id"]),
+        )
         self.conn.commit()
-        return {"skill_id": skill_id, "project_id": target, "status": status}
+        return result
 
     def skill_list(
         self,
@@ -1136,7 +1354,26 @@ class AgentSyncService:
             raise ValueError(f"unknown skill: {skill_id}")
         if row["project_id"] not in {session["project_id"], None}:
             raise ValueError("skill is outside the current project scope")
-        return self._skill_dict(row)
+        result = self._skill_dict(row)
+        result["files"] = self._skill_files(skill_id)
+        skill_md = self._skill_dir(skill_id) / "SKILL.md"
+        result["skill_md"] = skill_md.read_text(encoding="utf-8") if skill_md.exists() else ""
+        return result
+
+    def skill_file(self, context_version: str, skill_id: str, path: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown skill: {skill_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("skill is outside the current project scope")
+        safe = self._safe_skill_path(path)
+        target = self._skill_dir(skill_id) / safe
+        if not target.exists() or not target.is_file():
+            raise ValueError(f"skill file not found: {safe}")
+        if target.stat().st_size > 1024 * 1024:
+            raise ValueError("skill file too large to return")
+        return {"skill_id": skill_id, "path": safe, "content": target.read_text(encoding="utf-8")}
 
     # ------------------------------------------------------------------
     # project context / status / export

@@ -142,12 +142,13 @@ flowchart LR
 | 检索 | 混合召回 + 图扩展 + 重排 | 词法（英文词 + 中文双字） |
 | 跨设备 | op log + 冲突副本 | 中心 HTTP Hub + 本地 proxy + Bearer |
 | 文档 | Markdown + Git | SQLite 文档表 + 词法检索 |
-| 技能 | 候选→验证→晋升 | 最小 skills 表 + 状态字段 |
-| 抽取 | LLM 抽取/去重/冲突 | 规则 + 可选 LLM（OpenAI 兼容，失败回退）；语义去重未接 |
+| 技能 | 候选→验证→晋升 | 文件夹包：SKILL.md + scripts/references；Hub 落盘，watch 自动同步 |
+| 抽取 | LLM 抽取/去重/冲突 | 规则 + 可选 LLM（已用真实 OpenAI 兼容端点验证，失败回退规则）；语义去重未接 |
 | 鉴权 | 账号/OIDC + 设备 token | 单一 Bearer token |
 | 部署 | Docker Compose | Dockerfile/compose 已提供；本机 Docker Hub 不可达，未完成构建验证 |
-| 控制台 | Web 管理/审核 | Hub 自带单页 Web UI（概览/采集/记忆/候选/文档/技能/身份） |
-| 评测 | CrossProjectBench + 消融 | 30 个功能测试，迁移实验未开始 |
+| 控制台 | Web 管理/审核 | Material 3 单页 Web UI（概览/收件箱/记忆/候选/文档/技能/身份） |
+| 自动化 | 自动采集/同步 | `membridge watch` 同步 docs/、skill 文件夹、inbox；MCP 任务结束写回 |
+| 评测 | CrossProjectBench + 消融 | 34 个功能测试，迁移实验未开始 |
 
 ## 8. 待定项
 

@@ -24,7 +24,10 @@ INSTRUCTIONS = (
     "`context_version`. Pass that `context_version` to every subsequent memory, document and skill tool. "
     "If you skip bootstrap, those tools return BOOTSTRAP_REQUIRED. "
     "Use memory_search for facts/decisions/lessons, doc_search/doc_read for documents, "
-    "and skill_list/skill_get for reusable procedures."
+    "and skill_list/skill_get/skill_file for folder-shaped skills. "
+    "At the END of a task, call memory_ingest with a concise summary of durable decisions, "
+    "lessons and preferences. The user should not have to manually copy transcripts; "
+    "automatic capture is part of your job."
 )
 
 
@@ -243,21 +246,21 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "skill_list",
         "title": "List skills",
-        "description": "List reusable skills/procedures for the current project and global scope. Requires bootstrap.",
+        "description": "List folder-shaped skills for the current project and global scope, including file counts. Requires bootstrap.",
         "inputSchema": _schema({"context_version": CTX, "project_id": {"type": "string"}, "query": {"type": "string"}}, ["context_version"]),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
     },
     {
         "name": "skill_get",
         "title": "Get skill",
-        "description": "Read one skill, including steps and trigger. Requires bootstrap.",
+        "description": "Read one skill folder (manifest, file list and SKILL.md). Use skill_file for scripts/references. Requires bootstrap.",
         "inputSchema": _schema({"context_version": CTX, "skill_id": {"type": "string"}}, ["context_version", "skill_id"]),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
     },
     {
         "name": "skill_add",
         "title": "Add skill",
-        "description": "Add a candidate skill/procedure. Requires bootstrap and user confirmation later.",
+        "description": "Legacy text-only skill helper; prefer skill_install for a real folder package. Requires bootstrap.",
         "inputSchema": _schema(
             {
                 "context_version": CTX,
@@ -269,6 +272,36 @@ TOOLS: list[dict[str, Any]] = [
             ["context_version", "name", "trigger", "steps"],
         ),
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "skill_install",
+        "title": "Install skill folder",
+        "description": (
+            "Install a folder-shaped skill package: a map of relative path -> text content, "
+            "which MUST include SKILL.md (YAML frontmatter + body). Files are stored under the skill directory. "
+            "Requires bootstrap."
+        ),
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "files": {"type": "object", "additionalProperties": {"type": "string"}},
+                "name": {"type": "string"},
+                "project_id": {"type": "string"},
+                "status": {"type": "string", "enum": ["candidate", "validated", "global"]},
+            },
+            ["context_version", "files"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "skill_file",
+        "title": "Read skill file",
+        "description": "Read one file from a skill folder (scripts/references/SKILL.md). Requires bootstrap.",
+        "inputSchema": _schema(
+            {"context_version": CTX, "skill_id": {"type": "string"}, "path": {"type": "string"}},
+            ["context_version", "skill_id", "path"],
+        ),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
     },
     {
         "name": "project_context",
@@ -420,6 +453,18 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 project_id=args.get("project_id"),
             )
         )
+    if name == "skill_install":
+        return _ok(
+            service.skill_install(
+                ctx,
+                files=dict(args["files"]),
+                name=args.get("name"),
+                project_id=args.get("project_id"),
+                status=args.get("status"),
+            )
+        )
+    if name == "skill_file":
+        return _ok(service.skill_file(ctx, args["skill_id"], args["path"]))
     if name == "project_context":
         return _ok(service.project_context(ctx))
     return _err(f"Unknown tool: {name}")

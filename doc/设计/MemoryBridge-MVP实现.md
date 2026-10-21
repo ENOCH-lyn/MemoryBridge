@@ -9,8 +9,26 @@
 
 MVP 只验证一件事：**同一个 MCP 服务，能否让任意客户端在新会话里恢复同一个 agent 的人格与上下文。**
 
-不做：自动 LLM 抽取、向量检索、远程 HTTP、多设备并发同步、鉴权。  
-先做：Identity、Bootstrap Gate、项目作用域、记忆/文档/技能、CLI、MCP 协议、测试。
+已做：Identity、Bootstrap Gate、项目作用域、记忆/文档/技能文件夹、CLI、MCP、HTTP Hub、可选 LLM 抽取、watch 自动同步。  
+未做/下一阶段：向量检索、多设备并发冲突（op log）、多租户、E2EE。
+
+## 4.2 自动同步（watch）
+
+```text
+membridge init-project --path .
+  └─ .membridge/{inbox,skills,state.json}
+
+membridge watch --project-path . [--remote URL] [--auto-activate]
+  ├─ docs/**/*.md            → doc_add（按内容 hash 去重）
+  ├─ .membridge/skills/*/    → skill_install（整个文件夹）
+  └─ .membridge/inbox/*      → memory_ingest（按内容 hash 去重）
+```
+
+- 正常使用不需要在 UI 手工“采集”；UI 的收件箱页只保留手动补录 fallback。
+- 默认抽取为候选，人工审核后 active；加 `--auto-activate` 可让高置信候选直接进入 active（个人使用可选）。
+- MCP `initialize.instructions` 要求 agent 在任务结束时调用 `memory_ingest`，把持久结论写回。
+- 同步是本地进程 push 到 Hub，不依赖 Hub 访问用户文件系统；删除/重命名暂不自动处理。
+
 
 ## 2. 组件
 
@@ -31,7 +49,8 @@ mcp_server.py
 ```
 
 - `extract.py`：确定性规则抽取；`llm.py`：可选 OpenAI 兼容抽取，失败回退规则。
-- `webui.html`：Hub 自带单页控制台（概览/采集/记忆/候选/文档/技能/身份/连接）。
+- `sync.py`：本地项目同步器；`watch` 轮询 docs/、`.membridge/skills/`、`.membridge/inbox/`。
+- `webui.html`：Hub 自带单页控制台（Material 3：概览/收件箱/记忆/候选/文档/技能/身份/连接）。
 
 ## 3. 数据模型
 
@@ -92,7 +111,9 @@ memory_delete(ctx, id)       # 软删除 + deleted_at
 - 候选默认不可检索；`memory_search` 只查 `status='active'`。
 - 每条候选保留 `episode_id` + `evidence_quote`，可回溯到原始片段。
 - `reject` 后同一内容的 hash 仍在 rejected，`memory_ingest` 不会自动重复提出。
-- 抽取器：规则版始终可用；配置 `MEMBRIDGE_LLM_BASE_URL/API_KEY/MODEL` 后优先 LLM，失败回退规则，结果里返回 `extractor` 与 `llm_error`。
+- 抽取器：规则版始终可用；配置 `MEMBRIDGE_LLM_BASE_URL/API_KEY/MODEL` 后优先 LLM，失败回退规则，结果里返回 `extractor` 与 `llm_error`。已用真实 OpenAI 兼容端点验证抽取，候选保留证据引用。
+- 自动入口：`membridge watch` 监听 `.membridge/inbox`，不需要手工“采集”；docs/ 与 skill 文件夹也由同一个 watch 增量同步。MCP instructions 要求 agent 在任务结束时调用 `memory_ingest` 写入持久结论。
+- 技能是**文件夹**：`SKILL.md`（YAML frontmatter + 正文）+ `scripts/`、`references/`、`assets/`。Hub 落盘到 `data/skills/<skill_id>/`，DB 只存元数据与文件清单；`skill_install` / `skill_file` 读写整个包，UI 可上传目录。
 
 ## 5. 检索
 
@@ -105,7 +126,7 @@ memory_delete(ctx, id)       # 软删除 + deleted_at
 ## 6. MCP 协议
 
 - `initialize` 返回 `protocolVersion`、`capabilities`、`serverInfo`、`instructions`。
-- `instructions` 明确要求每次新会话先 `agent_bootstrap`。
+- `instructions` 明确要求每次新会话先 `agent_bootstrap`，并在任务结束时用 `memory_ingest` 写入持久结论。
 - 工具描述也重复该要求；其他工具要求 `context_version`。
 - `tools/call` 的 Gate 错误返回 `isError: true` + `structuredContent.code`。
 - 资源 `memory://identity`；prompt `recall_for_task`。
@@ -115,10 +136,10 @@ memory_delete(ctx, id)       # 软删除 + deleted_at
 
 Hub 在 `GET /` 直接返回 `webui.html`（单文件 HTML/CSS/JS，无构建、无 CDN）。界面按 Material 3 设计：导航 rail、tonal surface、filled/tonal/outlined 按钮、明暗主题、snackbar/dialog；不是营销落地页，而是操作控制台。
 
-- 概览：身份、活跃记忆/候选/文档/技能、LLM 状态、快速采集。
-- 采集：文本 → `memory_ingest`，展示 extractor/候选/证据。
+- 概览：身份、活跃记忆/候选/文档/技能、LLM 状态、手动补录。
+- 收件箱：说明 `membridge watch` 自动同步；手动粘贴仅作 fallback。
 - 记忆：搜索、编辑、软删除；候选：批准/拒绝。
-- 文档/技能：列表、查看、添加。
+- 文档/技能：文档列表；技能文件夹列表、目录查看、文件读取、目录上传。
 - 身份：改 persona/style/boundaries；保存后下一次 bootstrap 生效。
 - 连接：token、项目路径、MCP 配置片段、`/export` 下载、健康检查。
 

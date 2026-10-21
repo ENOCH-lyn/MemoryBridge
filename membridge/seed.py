@@ -102,27 +102,48 @@ def seed(service: AgentSyncService) -> dict:
         project_id=project["id"],
     )
 
-    service.skill_add(
+    service.skill_install(
         ctx,
+        files={
+            "SKILL.md": (
+                "---\n"
+                "name: Windows pytest 路径修复\n"
+                "description: pytest 在 Windows 上因路径含空格失败\n"
+                "status: validated\n"
+                "steps:\n"
+                "  - 用 pathlib.Path 构造路径\n"
+                "  - subprocess 调用时为路径加引号\n"
+                "  - CI 中将 cache_dir 指向无空格目录\n"
+                "---\n\n"
+                "# Windows pytest 路径修复\n\n"
+                "先在本地复现，再改路径构造；不要用字符串拼接处理 Windows 路径。\n"
+            ),
+            "scripts/check.ps1": "python -m pytest -q\n",
+            "references/notes.md": "# Notes\n\nUse pathlib.Path and quote subprocess arguments.\n",
+        },
         name="Windows pytest 路径修复",
-        trigger="pytest 在 Windows 上因路径含空格失败",
-        steps=[
-            "用 pathlib.Path 构造路径",
-            "subprocess 调用时为路径加引号",
-            "CI 中将 cache_dir 指向无空格目录",
-        ],
         project_id=project["id"],
         status="validated",
     )
-    service.skill_add(
+    service.skill_install(
         ctx,
+        files={
+            "SKILL.md": (
+                "---\n"
+                "name: MCP 客户端接入检查\n"
+                "description: 新客户端连不上 MemoryBridge\n"
+                "status: candidate\n"
+                "steps:\n"
+                "  - 确认 python -m membridge --db <path> serve 可手动启动\n"
+                "  - 确认客户端配置里的 command/args 使用绝对路径\n"
+                "  - 新会话先调用 agent_bootstrap，再调用 memory_search\n"
+                "---\n\n"
+                "# MCP 客户端接入检查\n\n"
+                "先手工跑通 stdio，再检查客户端配置。\n"
+            ),
+            "scripts/smoke.ps1": "python -m membridge --help\n",
+        },
         name="MCP 客户端接入检查",
-        trigger="新客户端连不上 MemoryBridge",
-        steps=[
-            "确认 python -m membridge --db <path> serve 可手动启动",
-            "确认客户端配置里的 command/args 使用绝对路径",
-            "新会话先调用 agent_bootstrap，再调用 memory_search",
-        ],
         status="candidate",
     )
 
