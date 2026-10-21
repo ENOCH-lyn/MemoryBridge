@@ -234,7 +234,7 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
         )
     if name == "agent_whoami":
         identity = service.get_identity()
-        return _ok({"agent_id": service._meta("agent_id", "agent_default"), "identity": identity})
+        return _ok({"agent_id": service.get_agent_id(), "identity": identity})
     if name == "agent_status":
         return _ok(service.status())
 

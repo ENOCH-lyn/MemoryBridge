@@ -2,8 +2,8 @@
 
 忆桥是一个**自部署的 Agent 身份 / 记忆 / 能力同步器**：任何支持 MCP 的客户端，只要连上同一个 MemoryBridge，agent 在每次新会话先 `agent_bootstrap`，就能拿回同一份人格、全局指令、项目上下文、记忆、文档和技能。
 
-> **当前状态：可运行 MVP（本地 stdio + SQLite）**。
-> 已实现 Identity / Bootstrap Gate / 记忆 / 文档 / 技能 / CLI / 测试；跨设备实时同步、自动抽取、向量检索是下一阶段。
+> **当前状态：可运行 MVP（本地 stdio + HTTP Hub + 本地 MCP proxy）**。
+> 已实现 Identity / Bootstrap Gate / 记忆 / 文档 / 技能 / CLI / 跨设备 Hub / 测试；自动抽取、向量检索、冲突合并是下一阶段。
 
 ## 现在能做到什么
 
@@ -13,6 +13,7 @@
 - **记忆**：事实 / 偏好 / 决策 / 教训 / 流程 / 文档引用；中文双字 + 英文词检索；反馈会调整置信度。
 - **文档**：Markdown/ADR 作为一等记忆，支持写入、搜索、按 id 读取。
 - **技能**：可复用流程的候选/已验证状态，支持触发条件与步骤。
+- **跨设备**：一台设备/服务器跑 `hub`，其他设备用 `serve --remote` 做本地 MCP proxy；连的是同一份身份与记忆。
 - **零外部依赖**：Python 3.11+ 标准库 + SQLite；单文件数据库，可拷贝、可导出。
 - **MCP 协议**：`initialize` 带 `instructions`；工具带描述与 annotations；另有 `memory://identity` 资源和 `recall_for_task` prompt。
 
@@ -77,6 +78,51 @@ Claude Code / Cursor / DSH 的 MCP 配置（把路径换成你的实际路径）
 
 **第一次对话**：客户端应把 `initialize.instructions` 注入模型；模型会先调 `agent_bootstrap`。如果某个客户端不注入 `instructions`，手动说一句“先调用 agent_bootstrap”即可，Gate 也会在后续工具调用时强制补调。
 
+## 跨设备：Hub + 本地 Proxy
+
+一台设备（或 VPS/NAS）持有数据库并跑 Hub：
+
+```powershell
+$env:MEMBRIDGE_TOKEN = "change-me-to-a-long-random-token"
+python -m membridge --db .\membridge.db hub --host 0.0.0.0 --port 8787
+```
+
+其他设备只跑本地 MCP proxy，指向同一个 Hub：
+
+```powershell
+$env:MEMBRIDGE_TOKEN = "change-me-to-a-long-random-token"
+python -m membridge serve --remote http://HUB_IP:8787 --token $env:MEMBRIDGE_TOKEN --project .
+```
+
+MCP 配置（设备 B）：
+
+```json
+{
+  "mcpServers": {
+    "membridge": {
+      "command": "python",
+      "args": [
+        "-m", "membridge",
+        "serve",
+        "--remote", "http://HUB_IP:8787",
+        "--token", "change-me-to-a-long-random-token",
+        "--project", "C:\\path\\to\\your\\project"
+      ],
+      "env": {
+        "PYTHONPATH": "C:\\path\\to\\MemoryBridge"
+      }
+    }
+  }
+}
+```
+
+说明：
+
+- Hub 提供 `POST /rpc`、`GET /health`、`GET /export`；除 `/health` 外都要 Bearer token。
+- 跨公网建议放在 Tailscale / Cloudflare Tunnel / Caddy TLS 之后，不要直接裸奔 `0.0.0.0:8787`。
+- 项目 id 不再按绝对路径哈希：有 `origin` remote 时用 remote（如 `git:github.com/enoch-lyn/memorybridge`），否则用目录名；同一仓库在不同电脑上会落到同一个 project。
+- 当前是“中心数据库”，没有 op log/冲突副本；并发写同一记忆时仍是最后写入生效。下一阶段做增量同步与冲突队列。
+
 ## CLI
 
 ```powershell
@@ -93,6 +139,8 @@ python -m membridge --db .\membridge.db docs search "SQLite" --project-path .
 python -m membridge --db .\membridge.db skills list --project-path .
 python -m membridge --db .\membridge.db export --out .\backup.json
 python -m membridge --db .\membridge.db import --in .\backup.json
+python -m membridge --db .\membridge.db hub --host 0.0.0.0 --port 8787
+python -m membridge serve --remote http://127.0.0.1:8787 --token $env:MEMBRIDGE_TOKEN --project .
 ```
 
 > `--json` 可放在命令任意位置；数据默认 UTF-8 输出。
@@ -103,7 +151,7 @@ python -m membridge --db .\membridge.db import --in .\backup.json
 |---|---|
 | Identity | 人格、称呼、语气、边界、版本；全局唯一，随数据库走 |
 | Directive | 全局或项目级 standing instruction，带优先级 |
-| Project | 按路径哈希生成；保存 name / path / conventions |
+| Project | git remote 或目录名生成稳定 key；保存 name / path / conventions |
 | Memory | `fact / preference / decision / lesson / procedure / reference`，带置信度与来源 |
 | Document | Markdown/ADR，按项目挂载，可被检索与引用 |
 | Skill | 触发条件 + 步骤 + 状态（candidate/validated/global） |
@@ -115,13 +163,15 @@ python -m membridge --db .\membridge.db import --in .\backup.json
 ```text
 membridge/
 ├─ db.py          SQLite schema / 连接 / 时间与 JSON 工具
-├─ service.py     Identity、Bootstrap、记忆、文档、技能、导出
+├─ service.py     Identity、Bootstrap、记忆、文档、技能、项目 key、导出
 ├─ mcp_server.py  MCP stdio JSON-RPC、工具 schema、Gate 错误
+├─ remote.py      HTTP Hub + RemoteService（MCP proxy）
 ├─ cli.py         命令行
 └─ seed.py        演示数据
 tests/
-├─ test_service.py  服务/门禁/隔离/中文检索/导入导出
-└─ test_mcp.py      MCP initialize / tools / bootstrap / 跨进程 context
+├─ test_service.py  服务/门禁/项目 key/中文检索/导入导出
+├─ test_mcp.py      MCP initialize / tools / bootstrap / 跨进程 context
+└─ test_remote.py   Hub / RemoteService / MCP proxy / 鉴权
 ```
 
 ## 借用/参考了哪些开源设计
@@ -134,11 +184,11 @@ tests/
 
 ## 当前限制（下一阶段）
 
-- **仅 stdio**：还没有远程 MCP/HTTP 服务；跨设备实时同步未实现。当前可用同一 DB 文件、导出/导入过渡。
+- **远程是 proxy + Hub**：本地 MCP proxy 连 HTTP Hub，不是原生 MCP streamable HTTP；Hub 是中心 SQLite 单点。
+- **Hub 安全**：只有 Bearer token，没有账号/TLS；公网必须放在 Tailscale / Cloudflare Tunnel / Caddy 之后。
 - **没有自动抽取**：记忆目前由 agent/用户显式写入；LLM 抽取、去重、冲突合并未接。
 - **没有向量检索**：中文用双字、英文用词匹配；embedding/rerank 未接。
-- **没有鉴权**：stdio 本地服务；远程部署前必须加 token/OAuth/TLS。
-- **没有冲突/墓碑/op log**：多设备并发写暂不支持；导入是 `INSERT OR IGNORE`。
+- **没有冲突/墓碑/op log**：Hub 模式下并发写同一记忆是最后写入生效；导入是 `INSERT OR IGNORE`。
 - **技能晋升未做审核 UI**：目前 CLI/工具直接写，后续加“候选 → 验证 → 晋升”。
 
 ## 测试
@@ -147,7 +197,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 12 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、context 失效、猫娘人格、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context。
+当前 18 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote）、context 失效、猫娘人格、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权。
 
 ## 文档
 

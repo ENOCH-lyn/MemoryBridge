@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .db import utcnow
 from .mcp_server import run_stdio
+from .remote import RemoteService, run_hub
 from .seed import seed as seed_data
 from .service import AgentSyncService
 
@@ -181,9 +182,21 @@ def cmd_skills(args) -> int:
 
 
 def cmd_serve(args) -> int:
-    svc = _service(args)
-    run_stdio(svc, default_project=args.project)
-    svc.close()
+    token = args.token or os.environ.get("MEMBRIDGE_TOKEN", "")
+    if args.remote:
+        service = RemoteService(args.remote, token=token)
+    else:
+        service = _service(args)
+    try:
+        run_stdio(service, default_project=args.project)
+    finally:
+        service.close()
+    return 0
+
+
+def cmd_hub(args) -> int:
+    token = args.token or os.environ.get("MEMBRIDGE_TOKEN", "")
+    run_hub(args.db, host=args.host, port=args.port, token=token)
     return 0
 
 
@@ -228,9 +241,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--client", default="cli")
     p.set_defaults(func=cmd_bootstrap)
 
-    p = sub.add_parser("serve", help="run the MCP stdio server")
+    p = sub.add_parser("serve", help="run the MCP stdio server (local DB or remote hub)")
     p.add_argument("--project", default=None, help="default project path when agent_bootstrap has no project_path")
+    p.add_argument("--remote", default=None, help="hub URL, e.g. http://127.0.0.1:8787")
+    p.add_argument("--token", default=None, help="hub bearer token (or MEMBRIDGE_TOKEN)")
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("hub", help="run the shared HTTP hub")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8787)
+    p.add_argument("--token", default=None, help="bearer token (or MEMBRIDGE_TOKEN)")
+    p.set_defaults(func=cmd_hub)
 
     p = sub.add_parser("persona", help="show or set the identity/persona")
     p_sub = p.add_subparsers(dest="persona_command", required=True)

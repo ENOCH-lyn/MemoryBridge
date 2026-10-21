@@ -61,13 +61,14 @@ CREATE TABLE IF NOT EXISTS identity (
 
 CREATE TABLE IF NOT EXISTS projects (
     id               TEXT PRIMARY KEY,
+    key              TEXT,
     name             TEXT NOT NULL,
     path             TEXT NOT NULL,
     conventions_json TEXT NOT NULL DEFAULT '[]',
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_path ON projects(path);
+CREATE INDEX IF NOT EXISTS idx_projects_path ON projects(path);
 
 CREATE TABLE IF NOT EXISTS directives (
     id          TEXT PRIMARY KEY,
@@ -152,6 +153,12 @@ def connect(db_path: str | os.PathLike[str]) -> sqlite3.Connection:
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    # Lightweight migration for databases created before the stable project key.
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(projects)").fetchall()}
+    if "key" not in columns:
+        conn.execute("ALTER TABLE projects ADD COLUMN key TEXT")
+    conn.execute("UPDATE projects SET key = 'name:' || lower(name) WHERE key IS NULL OR key = ''")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_key ON projects(key)")
     now = utcnow()
     conn.execute(
         """

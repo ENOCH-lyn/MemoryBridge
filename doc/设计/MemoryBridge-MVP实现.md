@@ -24,16 +24,10 @@ mcp_server.py
   ├─ resources: memory://identity
   └─ prompts: recall_for_task
         │
-        ▼
-service.py
-  ├─ AgentSyncService
-  ├─ Identity / Directives
-  ├─ Bootstrap + context_version + Gate
-  ├─ Memory / Documents / Skills
-  └─ Export / Import
+        ├── local mode ──────► service.py ──► db.py (SQLite)
         │
-        ▼
-db.py  →  SQLite 单文件
+        └── remote mode ─────► remote.py RemoteService ──HTTP──► hub
+                                                     (POST /rpc, Bearer)
 ```
 
 ## 3. 数据模型
@@ -42,7 +36,7 @@ db.py  →  SQLite 单文件
 |---|---|
 | `identity` | 单行：name / persona / style_json / boundaries_json / version |
 | `directives` | global 或 project 级 standing instruction，priority |
-| `projects` | 路径哈希 id、name、path、conventions_json |
+| `projects` | 稳定 key（git remote 或目录名）、id、name、path、conventions_json |
 | `memories` | type / content / confidence / source / status / uses / helpful |
 | `documents` | project、path、title、content |
 | `skills` | name / trigger / steps_json / status / success / failure |
@@ -53,7 +47,7 @@ db.py  →  SQLite 单文件
 
 ```text
 client → agent_bootstrap(project_path, agent_id, client)
-  ├─ ensure_project(project_path)        # 路径哈希，幂等
+  ├─ ensure_project(project_path)        # git remote / 目录名 → 稳定 key，幂等
   ├─ identity = get_identity()
   ├─ directives = global + project
   ├─ context_version = sha256(identity.version, directives, project.conventions)
@@ -88,7 +82,20 @@ memory_search(context_version, query)
 - 工具描述也重复该要求；其他工具要求 `context_version`。
 - `tools/call` 的 Gate 错误返回 `isError: true` + `structuredContent.code`。
 - 资源 `memory://identity`；prompt `recall_for_task`。
-- 仅 stdio；stdout 只写 JSON-RPC，日志走 stderr。
+- 本地模式走 stdio；stdout 只写 JSON-RPC，日志走 stderr。
+
+### 6.1 远程模式（Hub + 本地 Proxy）
+
+```text
+设备 A（有 DB）:  membridge hub --host 0.0.0.0 --port 8787 --token ...
+设备 B（无 DB）:  membridge serve --remote http://A:8787 --token ... --project .
+```
+
+- Hub：`POST /rpc`（JSON `{method,args,kwargs}`）、`GET /health`、`GET /export`；Bearer token 鉴权。
+- Hub 每个请求新建 `AgentSyncService`，避免 SQLite 跨线程问题；WAL 处理并发读。
+- 本地 MCP proxy 用 `RemoteService` 把同名方法转发到 Hub；Gate 错误码原样转成 `GateError`。
+- 项目 key 不再按绝对路径：有 `origin` remote 用 remote（`git:github.com/...`），否则用目录名。这样两台电脑 clone 同一仓库会落到同一个 project。
+- 仍未做：op log、冲突副本、Hub 横向扩展、账号体系；并发写同一记忆是最后写入生效。
 
 ## 7. 参考与差异
 
@@ -102,8 +109,8 @@ memory_search(context_version, query)
 
 ## 8. 已知限制与下一步
 
-1. 远程 MCP / HTTP：加 bearer token、TLS、会话管理。
-2. 多设备同步：op log + 游标 + 冲突副本；当前导出/导入只是过渡。
+1. 远程：已有 Hub + 本地 proxy + Bearer；待 TLS、账号体系、限流、Hub 高可用。
+2. 多设备同步：Hub 是中心 SQLite；待 op log + 游标 + 冲突副本，当前并发写最后写入生效。
 3. 自动抽取：LLM 抽取 + 去重 + 冲突检测 + 审核队列。
 4. 向量检索：bge-m3 + pgvector + 混合排序。
 5. 技能晋升：候选 → 验证 → 项目/全局，带审计。

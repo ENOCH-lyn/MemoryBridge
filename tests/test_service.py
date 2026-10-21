@@ -51,6 +51,23 @@ class ServiceTest(unittest.TestCase):
             self.svc.doc_read(ctx_b, doc["document_id"])
         self.assertNotEqual(project_a["id"], project_b["id"])
 
+    def test_project_key_stable_across_path_spellings(self) -> None:
+        first = self.svc.ensure_project("project-a")
+        second = self.svc.ensure_project("./project-a")
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(first["key"], "name:project-a")
+
+    def test_project_key_uses_git_remote(self) -> None:
+        with tempfile.TemporaryDirectory() as repo_dir:
+            git_dir = Path(repo_dir) / ".git"
+            git_dir.mkdir()
+            (git_dir / "config").write_text(
+                '[remote "origin"]\n\turl = git@github.com:ENOCH-lyn/MemoryBridge.git\n',
+                encoding="utf-8",
+            )
+            project = self.svc.ensure_project(repo_dir)
+            self.assertEqual(project["key"], "git:github.com/enoch-lyn/memorybridge")
+
     def test_context_stale_after_identity_change(self) -> None:
         ctx = self.svc.bootstrap()["context_version"]
         self.svc.set_identity(tone="catgirl", suffix="喵")

@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+import configparser
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from .db import (
     connect,
@@ -147,6 +149,9 @@ class AgentSyncService:
             (key, value),
         )
 
+    def get_agent_id(self) -> str:
+        return self._meta("agent_id", "agent_default") or "agent_default"
+
     # ------------------------------------------------------------------
     # identity / directives
     # ------------------------------------------------------------------
@@ -261,24 +266,26 @@ class AgentSyncService:
             normalized = str(path_obj.resolve()) if path_obj.exists() or "/" in raw or "\\" in raw else raw
         except OSError:
             normalized = raw
-        project_id = "proj_" + hashlib.sha1(normalized.lower().encode("utf-8")).hexdigest()[:12]
-        row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        project_key = self._project_key(normalized, name)
+        project_id = "proj_" + hashlib.sha1(project_key.encode("utf-8")).hexdigest()[:12]
+        row = self.conn.execute("SELECT * FROM projects WHERE key = ?", (project_key,)).fetchone()
         now = utcnow()
         if row is None:
             project_name = name or Path(normalized).name or normalized
             self.conn.execute(
-                "INSERT INTO projects(id, name, path, conventions_json, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (project_id, project_name, normalized, json_dumps(conventions or []), now, now),
+                "INSERT INTO projects(id, key, name, path, conventions_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (project_id, project_key, project_name, normalized, json_dumps(conventions or []), now, now),
             )
-            self._audit("project.create", project_id, {"path": normalized, "name": project_name})
+            self._audit("project.create", project_id, {"key": project_key, "path": normalized, "name": project_name})
             self.conn.commit()
             row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
-        elif conventions is not None or name is not None:
+        else:
             self.conn.execute(
-                "UPDATE projects SET name = ?, conventions_json = ?, updated_at = ? WHERE id = ?",
+                "UPDATE projects SET name = ?, path = ?, conventions_json = ?, updated_at = ? WHERE id = ?",
                 (
                     name or row["name"],
+                    normalized,
                     json_dumps(conventions if conventions is not None else json_loads(row["conventions_json"], [])),
                     now,
                     project_id,
@@ -288,10 +295,63 @@ class AgentSyncService:
             row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         return self._project_dict(row)
 
+    def _git_remote(self, path: str) -> str | None:
+        root = Path(path)
+        git_path = root / ".git"
+        if not git_path.exists():
+            return None
+        config_path: Path
+        if git_path.is_file():
+            text = git_path.read_text(encoding="utf-8", errors="replace")
+            match = re.search(r"gitdir:\s*(.+)", text)
+            if not match:
+                return None
+            git_dir = Path(match.group(1).strip())
+            if not git_dir.is_absolute():
+                git_dir = (root / git_dir).resolve()
+            config_path = git_dir / "config"
+        else:
+            config_path = git_path / "config"
+        if not config_path.exists():
+            return None
+        parser = configparser.ConfigParser(strict=False, interpolation=None)
+        try:
+            parser.read(config_path, encoding="utf-8")
+        except (configparser.Error, OSError):
+            return None
+        if parser.has_option('remote "origin"', "url"):
+            return parser.get('remote "origin"', "url").strip() or None
+        return None
+
+    @staticmethod
+    def _normalize_remote(remote: str) -> str:
+        value = remote.strip()
+        host = ""
+        path = value
+        if value.startswith("git@") and ":" in value:
+            host, path = value[4:].split(":", 1)
+        elif "://" in value:
+            parsed = urlparse(value)
+            host = parsed.hostname or ""
+            path = parsed.path
+        path = path.strip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        return f"git:{host.lower()}/{path.lower()}"
+
+    def _project_key(self, normalized: str, name: str | None = None) -> str:
+        remote = self._git_remote(normalized)
+        if remote:
+            return self._normalize_remote(remote)
+        # The key must be stable across devices; the display name is not.
+        base = Path(normalized).name or normalized
+        return "name:" + base.strip().lower()
+
     @staticmethod
     def _project_dict(row: Any) -> dict[str, Any]:
         return {
             "id": row["id"],
+            "key": row["key"],
             "name": row["name"],
             "path": row["path"],
             "conventions": json_loads(row["conventions_json"], []),
