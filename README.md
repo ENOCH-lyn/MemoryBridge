@@ -9,8 +9,9 @@
 
 - **同一个 agent**：新会话调用 `agent_bootstrap`，返回人格、称呼、语气、边界、全局指令、项目约定和 `context_version`。
 - **Bootstrap Gate**：没 bootstrap 就调记忆/文档/技能工具，返回 `BOOTSTRAP_REQUIRED`；身份或项目上下文变了，旧 context 返回 `CONTEXT_STALE`。
-- **项目隔离**：按项目路径自动建 project；默认检索“当前项目 + 全局”，不会把 A 项目私有记忆串到 B 项目。
+- **项目隔离**：按 git remote 或目录名建稳定 project；默认检索“当前项目 + 全局”，不会把 A 项目私有记忆串到 B 项目。
 - **记忆**：事实 / 偏好 / 决策 / 教训 / 流程 / 文档引用；中文双字 + 英文词检索；反馈会调整置信度。
+- **Capture & Curation**：`memory_ingest` 把原始对话存成 Episode，用规则抽取候选记忆；候选默认不可检索，批准后才进入 active，保留 `evidence_quote` 与 `episode_id`。
 - **文档**：Markdown/ADR 作为一等记忆，支持写入、搜索、按 id 读取。
 - **技能**：可复用流程的候选/已验证状态，支持触发条件与步骤。
 - **跨设备**：一台设备/服务器跑 `hub`，其他设备用 `serve --remote` 做本地 MCP proxy；连的是同一份身份与记忆。
@@ -44,6 +45,21 @@ python -m membridge --db .\membridge.db persona set `
   --tone 可爱 --suffix 喵 --address 主人
 python -m membridge --db .\membridge.db bootstrap --project-path demo
 ```
+
+试试自动抽取 + 审核：
+
+```powershell
+python -m membridge --db .\membridge.db ingest `
+  "以后都用中文提交信息。我们决定用 SQLite 而不是 Postgres。" `
+  --project-path demo
+
+python -m membridge --db .\membridge.db candidates --project-path demo
+# 复制其中一个 memory_id
+python -m membridge --db .\membridge.db approve mem_xxx --project-path demo
+python -m membridge --db .\membridge.db search "中文" --project-path demo
+```
+
+`ingest` 会先写 Episode，再抽取候选；候选默认不可检索，`approve` 后才进入 active。`reject` 后同一句不会被自动重复抽取。
 
 ## 接入 MCP 客户端
 
@@ -133,6 +149,12 @@ python -m membridge --db .\membridge.db bootstrap --project-path .
 python -m membridge --db .\membridge.db persona set --name 猫娘 --tone 可爱
 python -m membridge --db .\membridge.db directive add "先给结论" --scope global
 python -m membridge --db .\membridge.db remember "分页用 cursor" --type decision --project-path .
+python -m membridge --db .\membridge.db ingest "以后都用中文提交信息。我们决定用 SQLite 而不是 Postgres。" --project-path .
+python -m membridge --db .\membridge.db candidates --project-path .
+python -m membridge --db .\membridge.db approve mem_xxx --project-path .
+python -m membridge --db .\membridge.db reject mem_xxx --project-path .
+python -m membridge --db .\membridge.db update mem_xxx --content "新的内容" --project-path .
+python -m membridge --db .\membridge.db forget mem_xxx --project-path .
 python -m membridge --db .\membridge.db search "分页" --project-path .
 python -m membridge --db .\membridge.db docs add .\docs\adr.md --project-path .
 python -m membridge --db .\membridge.db docs search "SQLite" --project-path .
@@ -153,6 +175,8 @@ python -m membridge serve --remote http://127.0.0.1:8787 --token $env:MEMBRIDGE_
 | Directive | 全局或项目级 standing instruction，带优先级 |
 | Project | git remote 或目录名生成稳定 key；保存 name / path / conventions |
 | Memory | `fact / preference / decision / lesson / procedure / reference`，带置信度与来源 |
+| Episode | 原始对话/文档片段，候选记忆的证据来源 |
+| Candidate | 抽取后待审核的记忆；默认不可检索，approve 后 active |
 | Document | Markdown/ADR，按项目挂载，可被检索与引用 |
 | Skill | 触发条件 + 步骤 + 状态（candidate/validated/global） |
 | context_version | 身份 + 指令 + 项目约定的哈希；变更后旧会话失效 |
@@ -163,13 +187,15 @@ python -m membridge serve --remote http://127.0.0.1:8787 --token $env:MEMBRIDGE_
 ```text
 membridge/
 ├─ db.py          SQLite schema / 连接 / 时间与 JSON 工具
-├─ service.py     Identity、Bootstrap、记忆、文档、技能、项目 key、导出
+├─ service.py     Identity、Bootstrap、记忆、Episode、审核、文档、技能
+├─ extract.py     规则抽取（Episode → candidate）
 ├─ mcp_server.py  MCP stdio JSON-RPC、工具 schema、Gate 错误
 ├─ remote.py      HTTP Hub + RemoteService（MCP proxy）
 ├─ cli.py         命令行
 └─ seed.py        演示数据
 tests/
 ├─ test_service.py  服务/门禁/项目 key/中文检索/导入导出
+├─ test_capture.py  Episode/抽取/审核/去重/更新/删除
 ├─ test_mcp.py      MCP initialize / tools / bootstrap / 跨进程 context
 └─ test_remote.py   Hub / RemoteService / MCP proxy / 鉴权
 ```
@@ -178,7 +204,7 @@ tests/
 
 - **Letta MemFS**：root 身份文件 always-on + `MEMORY.md` 索引 + lazy 目录 + Git 版本 → 本项目的 Identity + 项目上下文分层。
 - **mcp-memory-service**：`get_bootstrap_profile` 的 token 预算、avoid rules、user corrections → 本项目的 bootstrap 包结构。
-- **Memobase**：结构化用户画像与“buffer + 少量固定 LLM 调用”的冷路径 → 后续自动抽取的参考。
+- **Memobase**：结构化用户画像与“buffer + 少量固定 LLM 调用”的冷路径 → 规则抽取 + 候选审核；LLM 抽取下一阶段。
 - **MemOS**：L1 trace / L2 policy / L3 world model / Skill → 后续技能晋升的参考。
 - **官方 MCP Memory Server**：“每次开始先 Remembering…” → 证明 bootstrap 目前多靠客户端提示词；本项目用 Gate 把它变成服务端约束。
 
@@ -186,9 +212,9 @@ tests/
 
 - **远程是 proxy + Hub**：本地 MCP proxy 连 HTTP Hub，不是原生 MCP streamable HTTP；Hub 是中心 SQLite 单点。
 - **Hub 安全**：只有 Bearer token，没有账号/TLS；公网必须放在 Tailscale / Cloudflare Tunnel / Caddy 之后。
-- **没有自动抽取**：记忆目前由 agent/用户显式写入；LLM 抽取、去重、冲突合并未接。
+- **抽取是规则版**：`extract.py` 用关键词规则产生候选；LLM 抽取、语义去重、冲突合并未接。
 - **没有向量检索**：中文用双字、英文用词匹配；embedding/rerank 未接。
-- **没有冲突/墓碑/op log**：Hub 模式下并发写同一记忆是最后写入生效；导入是 `INSERT OR IGNORE`。
+- **没有 op log / 字段级冲突**：软删除有墓碑，但 Hub 模式下并发写同一记忆是最后写入生效；导入是 `INSERT OR IGNORE`。
 - **技能晋升未做审核 UI**：目前 CLI/工具直接写，后续加“候选 → 验证 → 晋升”。
 
 ## 测试
@@ -197,7 +223,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 18 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote）、context 失效、猫娘人格、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权。
+当前 25 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote）、context 失效、猫娘人格、Episode/抽取/审核/去重/更新/删除、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权。
 
 ## 文档
 

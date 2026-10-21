@@ -109,10 +109,78 @@ TOOLS: list[dict[str, Any]] = [
         "title": "List memory",
         "description": "List active memory in the current project and global scope. Requires bootstrap.",
         "inputSchema": _schema(
-            {"context_version": CTX, "project_id": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}},
+            {
+                "context_version": CTX,
+                "project_id": {"type": "string"},
+                "status": {"type": "string", "enum": ["active", "candidate", "rejected", "deleted", "all"]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            },
             ["context_version"],
         ),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_ingest",
+        "title": "Ingest and extract",
+        "description": (
+            "Store raw conversation/document text as an episode and extract candidate memories. "
+            "Candidates are not searchable until approved, unless auto_activate is true. Requires bootstrap."
+        ),
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "text": {"type": "string"},
+                "source": {"type": "string"},
+                "project_id": {"type": "string"},
+                "auto_activate": {"type": "boolean", "description": "Activate high-confidence candidates immediately."},
+                "agent_id": {"type": "string"},
+            },
+            ["context_version", "text"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_candidates",
+        "title": "List candidates",
+        "description": "List extracted memories waiting for review. Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX, "project_id": {"type": "string"}}, ["context_version"]),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_decide",
+        "title": "Approve or reject candidate",
+        "description": "Approve (active) or reject a candidate memory. Requires bootstrap.",
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "memory_id": {"type": "string"},
+                "decision": {"type": "string", "enum": ["approve", "reject"]},
+            },
+            ["context_version", "memory_id"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_update",
+        "title": "Update memory",
+        "description": "Update a memory's content or confidence; bumps version. Requires bootstrap.",
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "memory_id": {"type": "string"},
+                "content": {"type": "string"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            ["context_version", "memory_id"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_delete",
+        "title": "Delete memory",
+        "description": "Soft-delete a memory (tombstone); it stops appearing in search. Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX, "memory_id": {"type": "string"}}, ["context_version", "memory_id"]),
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
     },
     {
         "name": "memory_feedback",
@@ -265,9 +333,36 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
             service.memory_list(
                 ctx,
                 project_id=args.get("project_id"),
+                status=args.get("status", "active"),
                 limit=int(args.get("limit", 50)),
             )
         )
+    if name == "memory_ingest":
+        return _ok(
+            service.memory_ingest(
+                ctx,
+                args["text"],
+                source=args.get("source", "conversation"),
+                agent_id=args.get("agent_id"),
+                project_id=args.get("project_id"),
+                auto_activate=bool(args.get("auto_activate", False)),
+            )
+        )
+    if name == "memory_candidates":
+        return _ok(service.memory_candidates(ctx, project_id=args.get("project_id")))
+    if name == "memory_decide":
+        return _ok(service.memory_decide(ctx, args["memory_id"], args.get("decision", "approve")))
+    if name == "memory_update":
+        return _ok(
+            service.memory_update(
+                ctx,
+                args["memory_id"],
+                content=args.get("content"),
+                confidence=args.get("confidence"),
+            )
+        )
+    if name == "memory_delete":
+        return _ok(service.memory_delete(ctx, args["memory_id"]))
     if name == "memory_feedback":
         return _ok(service.memory_feedback(ctx, args["memory_id"], args.get("signal", "helpful")))
     if name == "doc_search":

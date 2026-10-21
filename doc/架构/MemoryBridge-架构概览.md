@@ -114,7 +114,8 @@ flowchart LR
 |---|---|
 | Space | 作用域树（personal / project / team） |
 | Episode | 原始证据，只追加 |
-| Memory Item | 结构化记忆，带类型/置信度/时效/来源 |
+| Memory Item | 结构化记忆，带类型/置信度/时效/来源/证据 |
+| Candidate | 抽取后待审核的记忆；active 前不可检索 |
 | Memory Edge | relates_to / derived_from / supersedes / contradicts / applies_to |
 | Skill | 经验蒸馏后的可复用流程，带触发条件与验证记录 |
 | Document / Doc Chunk | Markdown 文档与可检索片段 |
@@ -142,7 +143,7 @@ flowchart LR
 | 跨设备 | op log + 冲突副本 | 中心 HTTP Hub + 本地 proxy + Bearer |
 | 文档 | Markdown + Git | SQLite 文档表 + 词法检索 |
 | 技能 | 候选→验证→晋升 | 最小 skills 表 + 状态字段 |
-| 抽取 | LLM 抽取/去重/冲突 | 手动/agent 显式写入 |
+| 抽取 | LLM 抽取/去重/冲突 | 规则抽取 + Episode + 候选审核；LLM/语义去重未接 |
 | 鉴权 | 账号/OIDC + 设备 token | 单一 Bearer token |
 | 部署 | Docker Compose | Python 进程 + SQLite |
 | 控制台 | Web 管理/审核 | 无 |

@@ -89,6 +89,11 @@ CREATE TABLE IF NOT EXISTS memories (
     confidence  REAL NOT NULL DEFAULT 0.8,
     source      TEXT NOT NULL DEFAULT 'manual',
     status      TEXT NOT NULL DEFAULT 'active',
+    episode_id  TEXT,
+    evidence_quote TEXT,
+    content_hash TEXT,
+    version     INTEGER NOT NULL DEFAULT 1,
+    deleted_at  TEXT,
     uses        INTEGER NOT NULL DEFAULT 0,
     helpful     INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
@@ -96,6 +101,17 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id, status);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type, status);
+
+CREATE TABLE IF NOT EXISTS episodes (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    agent_id    TEXT NOT NULL DEFAULT 'agent_default',
+    source      TEXT NOT NULL DEFAULT 'conversation',
+    content     TEXT NOT NULL,
+    meta_json   TEXT NOT NULL DEFAULT '{}',
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_episodes_project ON episodes(project_id, created_at);
 
 CREATE TABLE IF NOT EXISTS documents (
     id          TEXT PRIMARY KEY,
@@ -159,6 +175,17 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE projects ADD COLUMN key TEXT")
     conn.execute("UPDATE projects SET key = 'name:' || lower(name) WHERE key IS NULL OR key = ''")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_key ON projects(key)")
+    memory_columns = {row[1] for row in conn.execute("PRAGMA table_info(memories)").fetchall()}
+    for column, ddl in {
+        "episode_id": "TEXT",
+        "evidence_quote": "TEXT",
+        "content_hash": "TEXT",
+        "version": "INTEGER NOT NULL DEFAULT 1",
+        "deleted_at": "TEXT",
+    }.items():
+        if column not in memory_columns:
+            conn.execute(f"ALTER TABLE memories ADD COLUMN {column} {ddl}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash, status)")
     now = utcnow()
     conn.execute(
         """

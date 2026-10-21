@@ -37,7 +37,8 @@ mcp_server.py
 | `identity` | 单行：name / persona / style_json / boundaries_json / version |
 | `directives` | global 或 project 级 standing instruction，priority |
 | `projects` | 稳定 key（git remote 或目录名）、id、name、path、conventions_json |
-| `memories` | type / content / confidence / source / status / uses / helpful |
+| `memories` | type / content / confidence / source / status / episode_id / evidence_quote / content_hash / version / uses / helpful |
+| `episodes` | 原始对话/文档片段，候选记忆的证据来源 |
 | `documents` | project、path、title、content |
 | `skills` | name / trigger / steps_json / status / success / failure |
 | `sessions` | context_version、agent_id、project_id、identity_version、过期时间 |
@@ -68,11 +69,34 @@ memory_search(context_version, query)
 
 `context_version` 只哈希“身份 + 指令 + 项目约定”，不哈希记忆条数；新增记忆不会让会话失效，改人格/项目约定会。
 
+## 4.1 Capture：Episode → 候选 → 审核
+
+```text
+memory_ingest(context_version, text)
+  ├─ validate_context()
+  ├─ INSERT episodes(content, project_id, agent_id, source)
+  ├─ extract.py: 规则切句/分类 → candidates
+  ├─ 去重（content_hash + active/candidate/rejected）
+  ├─ INSERT memories(status='candidate' | 'active' if auto_activate)
+  └─ return { episode_id, candidates, duplicates }
+
+memory_candidates(ctx)       # 列出待审核
+memory_decide(ctx, id, approve/reject)
+memory_update(ctx, id, content/confidence)
+memory_delete(ctx, id)       # 软删除 + deleted_at
+```
+
+- 候选默认不可检索；`memory_search` 只查 `status='active'`。
+- 每条候选保留 `episode_id` + `evidence_quote`，可回溯到原始片段。
+- `reject` 后同一内容的 hash 仍在 rejected，`memory_ingest` 不会自动重复提出。
+- 当前抽取是关键词规则；后续可把 `extract.py` 换成 LLM 抽取，接口不变。
+
 ## 5. 检索
 
 - 中文：双字 bigram；英文：单词；去重后逐个 `in` 文本。
+- 只检索 `status='active'`；候选/拒绝/删除不可见。
 - 评分：`0.55*覆盖率 + 0.15*精确匹配 + 0.10*置信度 + 0.10*时间衰减 + 0.10*类型先验`。
-- 输出：content、score、snippet、`[mem:id]`；文档同理。
+- 输出：content、score、snippet、`[mem:id]`、episode_id/evidence；文档同理。
 - 这是**词法检索**，不是 embedding；下一阶段接 bge-m3/pgvector。
 
 ## 6. MCP 协议
@@ -111,7 +135,7 @@ memory_search(context_version, query)
 
 1. 远程：已有 Hub + 本地 proxy + Bearer；待 TLS、账号体系、限流、Hub 高可用。
 2. 多设备同步：Hub 是中心 SQLite；待 op log + 游标 + 冲突副本，当前并发写最后写入生效。
-3. 自动抽取：LLM 抽取 + 去重 + 冲突检测 + 审核队列。
+3. 抽取：已有规则抽取 + Episode + 候选审核；待 LLM 抽取、语义去重、字段级冲突。
 4. 向量检索：bge-m3 + pgvector + 混合排序。
 5. 技能晋升：候选 → 验证 → 项目/全局，带审计。
 6. 安全：密钥扫描、提示注入标记、权限与速率限制。

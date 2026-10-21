@@ -19,6 +19,8 @@ from .db import (
     new_id,
     utcnow,
 )
+from .extract import content_hash as compute_content_hash
+from .extract import extract_candidates as extract_memory_candidates
 
 
 MEMORY_TYPES = {"fact", "preference", "decision", "lesson", "procedure", "reference"}
@@ -420,7 +422,8 @@ class AgentSyncService:
         project_id = project["id"] if project else None
         recent = self._recent_items(project_id)
         available = {
-            "memories": self._count("memories", project_id),
+            "memories": self._count_memories(project_id, "active"),
+            "candidates": self._count_memories(project_id, "candidate"),
             "documents": self._count("documents", project_id),
             "skills": self._count("skills", project_id),
         }
@@ -450,6 +453,19 @@ class AgentSyncService:
             ).fetchone()
         else:
             row = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table} WHERE project_id IS NULL").fetchone()
+        return int(row["n"]) if row else 0
+
+    def _count_memories(self, project_id: str | None, status: str) -> int:
+        if project_id:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM memories WHERE status = ? AND (project_id = ? OR project_id IS NULL)",
+                (status, project_id),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM memories WHERE status = ? AND project_id IS NULL",
+                (status,),
+            ).fetchone()
         return int(row["n"]) if row else 0
 
     def _recent_items(self, project_id: str | None) -> dict[str, list[dict[str, Any]]]:
@@ -511,9 +527,25 @@ class AgentSyncService:
             "confidence": row["confidence"],
             "source": row["source"],
             "status": row["status"],
+            "episode_id": row["episode_id"],
+            "evidence_quote": row["evidence_quote"],
+            "version": row["version"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
+
+    def _find_duplicate(
+        self,
+        project_id: str | None,
+        content_hash: str,
+        statuses: tuple[str, ...] = ("active", "candidate"),
+    ) -> Any:
+        placeholders = ",".join("?" for _ in statuses)
+        return self.conn.execute(
+            f"SELECT * FROM memories WHERE content_hash = ? AND status IN ({placeholders}) "
+            "AND project_id IS ? LIMIT 1",
+            (content_hash, *statuses, project_id),
+        ).fetchone()
 
     def memory_add(
         self,
@@ -524,6 +556,8 @@ class AgentSyncService:
         project_id: str | None = None,
         confidence: float = 0.8,
         source: str = "agent",
+        episode_id: str | None = None,
+        evidence_quote: str | None = None,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
         if type not in MEMORY_TYPES:
@@ -533,14 +567,37 @@ class AgentSyncService:
             target_project = None
         if target_project and self.get_project(target_project) is None:
             raise ValueError(f"unknown project_id: {target_project}")
+        digest = compute_content_hash(content)
+        duplicate = self._find_duplicate(target_project, digest)
+        if duplicate is not None:
+            return {
+                "memory_id": duplicate["id"],
+                "project_id": duplicate["project_id"],
+                "type": duplicate["type"],
+                "status": duplicate["status"],
+                "duplicate": True,
+            }
         memory_id = new_id("mem")
         now = utcnow()
         self.conn.execute(
-            "INSERT INTO memories(id, project_id, type, content, confidence, source, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)",
-            (memory_id, target_project, type, content.strip(), float(confidence), source, now, now),
+            "INSERT INTO memories(id, project_id, type, content, confidence, source, status, "
+            "episode_id, evidence_quote, content_hash, version, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 1, ?, ?)",
+            (
+                memory_id,
+                target_project,
+                type,
+                content.strip(),
+                float(confidence),
+                source,
+                episode_id,
+                evidence_quote or content.strip(),
+                digest,
+                now,
+                now,
+            ),
         )
-        self._audit("memory.add", memory_id, {"project_id": target_project, "type": type})
+        self._audit("memory.add", memory_id, {"project_id": target_project, "type": type, "episode_id": episode_id})
         self.conn.commit()
         return {"memory_id": memory_id, "project_id": target_project, "type": type, "status": "active"}
 
@@ -596,23 +653,28 @@ class AgentSyncService:
         context_version: str,
         *,
         project_id: str | None = None,
+        status: str = "active",
         limit: int = 50,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
+        if status not in {"active", "candidate", "rejected", "deleted", "all"}:
+            raise ValueError("status must be active, candidate, rejected, deleted or all")
         selected = project_id if project_id is not None else session["project_id"]
+        status_clause = "" if status == "all" else "status = ? AND "
+        params: list[Any] = [] if status == "all" else [status]
         if selected:
             rows = self.conn.execute(
-                "SELECT * FROM memories WHERE status = 'active' AND (project_id = ? OR project_id IS NULL) "
+                f"SELECT * FROM memories WHERE {status_clause}(project_id = ? OR project_id IS NULL) "
                 "ORDER BY updated_at DESC LIMIT ?",
-                (selected, max(1, min(limit, 200))),
+                (*params, selected, max(1, min(limit, 200))),
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT * FROM memories WHERE status = 'active' AND project_id IS NULL "
+                f"SELECT * FROM memories WHERE {status_clause}project_id IS NULL "
                 "ORDER BY updated_at DESC LIMIT ?",
-                (max(1, min(limit, 200)),),
+                (*params, max(1, min(limit, 200))),
             ).fetchall()
-        return {"items": [self._memory_dict(r) for r in rows]}
+        return {"items": [self._memory_dict(r) for r in rows], "count": len(rows), "status": status}
 
     def memory_feedback(
         self,
@@ -620,10 +682,12 @@ class AgentSyncService:
         memory_id: str,
         signal: str = "helpful",
     ) -> dict[str, Any]:
-        self.validate_context(context_version)
+        session = self.validate_context(context_version)
         row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
         if row is None:
             raise ValueError(f"unknown memory_id: {memory_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("memory is outside the current project scope")
         if signal not in {"helpful", "harmful", "used"}:
             raise ValueError("signal must be helpful, harmful or used")
         delta = {"helpful": 0.02, "harmful": -0.05, "used": 0.0}[signal]
@@ -635,6 +699,220 @@ class AgentSyncService:
         self._audit("memory.feedback", memory_id, {"signal": signal})
         self.conn.commit()
         return {"memory_id": memory_id, "signal": signal, "confidence": round(confidence, 3)}
+
+    # ------------------------------------------------------------------
+    # capture: episodes, extraction, review
+    # ------------------------------------------------------------------
+    def _insert_episode(
+        self,
+        *,
+        content: str,
+        source: str,
+        agent_id: str,
+        project_id: str | None,
+        meta: dict | None = None,
+    ) -> str:
+        episode_id = new_id("ep")
+        self.conn.execute(
+            "INSERT INTO episodes(id, project_id, agent_id, source, content, meta_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (episode_id, project_id, agent_id, source, content.strip(), json_dumps(meta or {}), utcnow()),
+        )
+        return episode_id
+
+    def episode_add(
+        self,
+        context_version: str,
+        content: str,
+        *,
+        source: str = "conversation",
+        agent_id: str | None = None,
+        project_id: str | None = None,
+        meta: dict | None = None,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        target = project_id if project_id is not None else session["project_id"]
+        if target == "global":
+            target = None
+        episode_id = self._insert_episode(
+            content=content,
+            source=source,
+            agent_id=agent_id or session["agent_id"],
+            project_id=target,
+            meta=meta,
+        )
+        self._audit("episode.add", episode_id, {"project_id": target, "source": source})
+        self.conn.commit()
+        return {"episode_id": episode_id, "project_id": target, "source": source}
+
+    def memory_ingest(
+        self,
+        context_version: str,
+        text: str,
+        *,
+        source: str = "conversation",
+        agent_id: str | None = None,
+        project_id: str | None = None,
+        auto_activate: bool = False,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        target = project_id if project_id is not None else session["project_id"]
+        if target == "global":
+            target = None
+        episode_id = self._insert_episode(
+            content=text,
+            source=source,
+            agent_id=agent_id or session["agent_id"],
+            project_id=target,
+        )
+        candidates = extract_memory_candidates(text)
+        created: list[dict[str, Any]] = []
+        duplicates: list[dict[str, Any]] = []
+        now = utcnow()
+        for candidate in candidates:
+            duplicate = self._find_duplicate(target, candidate["content_hash"], ("active", "candidate", "rejected"))
+            if duplicate is not None:
+                duplicates.append(
+                    {
+                        "memory_id": duplicate["id"],
+                        "content": duplicate["content"],
+                        "status": duplicate["status"],
+                    }
+                )
+                continue
+            status = "active" if auto_activate and candidate["confidence"] >= 0.85 else "candidate"
+            memory_id = new_id("mem")
+            self.conn.execute(
+                "INSERT INTO memories(id, project_id, type, content, confidence, source, status, "
+                "episode_id, evidence_quote, content_hash, version, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                (
+                    memory_id,
+                    target,
+                    candidate["type"],
+                    candidate["content"],
+                    candidate["confidence"],
+                    f"episode:{episode_id}",
+                    status,
+                    episode_id,
+                    candidate["evidence_quote"],
+                    candidate["content_hash"],
+                    now,
+                    now,
+                ),
+            )
+            created.append(
+                {
+                    "memory_id": memory_id,
+                    "type": candidate["type"],
+                    "content": candidate["content"],
+                    "confidence": candidate["confidence"],
+                    "status": status,
+                    "evidence_quote": candidate["evidence_quote"],
+                }
+            )
+        self._audit(
+            "memory.ingest",
+            episode_id,
+            {"project_id": target, "created": len(created), "duplicates": len(duplicates)},
+        )
+        self.conn.commit()
+        return {
+            "episode_id": episode_id,
+            "project_id": target,
+            "candidates": created,
+            "duplicates": duplicates,
+            "counts": {"created": len(created), "duplicates": len(duplicates)},
+        }
+
+    def memory_candidates(
+        self,
+        context_version: str,
+        *,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        selected = project_id if project_id is not None else session["project_id"]
+        if selected:
+            rows = self.conn.execute(
+                "SELECT * FROM memories WHERE status = 'candidate' "
+                "AND (project_id = ? OR project_id IS NULL) ORDER BY updated_at DESC",
+                (selected,),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM memories WHERE status = 'candidate' AND project_id IS NULL "
+                "ORDER BY updated_at DESC"
+            ).fetchall()
+        return {"items": [self._memory_dict(row) for row in rows], "count": len(rows)}
+
+    def memory_decide(
+        self,
+        context_version: str,
+        memory_id: str,
+        decision: str = "approve",
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        if decision not in {"approve", "reject"}:
+            raise ValueError("decision must be approve or reject")
+        row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown memory_id: {memory_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("memory is outside the current project scope")
+        status = "active" if decision == "approve" else "rejected"
+        self.conn.execute(
+            "UPDATE memories SET status = ?, version = version + 1, updated_at = ? WHERE id = ?",
+            (status, utcnow(), memory_id),
+        )
+        self._audit(f"memory.{decision}", memory_id, {"from": row["status"], "to": status})
+        self.conn.commit()
+        return {"memory_id": memory_id, "status": status}
+
+    def memory_update(
+        self,
+        context_version: str,
+        memory_id: str,
+        *,
+        content: str | None = None,
+        confidence: float | None = None,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown memory_id: {memory_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("memory is outside the current project scope")
+        if row["status"] == "deleted":
+            raise ValueError("memory is deleted")
+        new_content = content.strip() if content is not None else row["content"]
+        new_confidence = float(confidence) if confidence is not None else row["confidence"]
+        digest = compute_content_hash(new_content)
+        self.conn.execute(
+            "UPDATE memories SET content = ?, confidence = ?, content_hash = ?, "
+            "version = version + 1, updated_at = ? WHERE id = ?",
+            (new_content, new_confidence, digest, utcnow(), memory_id),
+        )
+        self._audit("memory.update", memory_id, {"version": row["version"] + 1})
+        self.conn.commit()
+        return {"memory_id": memory_id, "version": row["version"] + 1}
+
+    def memory_delete(self, context_version: str, memory_id: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown memory_id: {memory_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("memory is outside the current project scope")
+        if row["status"] == "deleted":
+            return {"memory_id": memory_id, "status": "deleted", "already": True}
+        self.conn.execute(
+            "UPDATE memories SET status = 'deleted', deleted_at = ?, version = version + 1, updated_at = ? WHERE id = ?",
+            (utcnow(), utcnow(), memory_id),
+        )
+        self._audit("memory.delete", memory_id, {"previous_status": row["status"]})
+        self.conn.commit()
+        return {"memory_id": memory_id, "status": "deleted"}
 
     # ------------------------------------------------------------------
     # documents
@@ -822,7 +1100,7 @@ class AgentSyncService:
 
     def status(self) -> dict[str, Any]:
         counts = {}
-        for table in ("projects", "memories", "documents", "skills", "directives", "sessions"):
+        for table in ("projects", "memories", "documents", "skills", "directives", "episodes", "sessions"):
             row = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
             counts[table] = int(row["n"])
         return {
@@ -834,7 +1112,7 @@ class AgentSyncService:
 
     def export_data(self) -> dict[str, Any]:
         data: dict[str, Any] = {"format": "membridge-export-v1", "exported_at": utcnow()}
-        for table in ("identity", "projects", "directives", "memories", "documents", "skills"):
+        for table in ("identity", "projects", "directives", "episodes", "memories", "documents", "skills"):
             data[table] = [dict(r) for r in self.conn.execute(f"SELECT * FROM {table}").fetchall()]
         return data
 
@@ -858,7 +1136,7 @@ class AgentSyncService:
                 ),
             )
             imported += 1
-        for table in ("projects", "directives", "memories", "documents", "skills"):
+        for table in ("projects", "directives", "episodes", "memories", "documents", "skills"):
             rows = payload.get(table, [])
             if not rows:
                 continue

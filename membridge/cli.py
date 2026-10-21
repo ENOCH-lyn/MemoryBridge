@@ -133,6 +133,68 @@ def cmd_search(args) -> int:
     return 0
 
 
+def cmd_ingest(args) -> int:
+    svc = _service(args)
+    if args.file:
+        text = Path(args.file).expanduser().read_text(encoding="utf-8")
+    else:
+        text = args.text or ""
+    if not text.strip():
+        raise SystemExit("provide text or --file")
+    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+    result = svc.memory_ingest(
+        bootstrap["context_version"],
+        text,
+        source=args.source,
+        auto_activate=args.auto_activate,
+    )
+    result["context_version"] = bootstrap["context_version"]
+    _print(result, True)
+    svc.close()
+    return 0
+
+
+def cmd_candidates(args) -> int:
+    svc = _service(args)
+    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+    result = svc.memory_candidates(bootstrap["context_version"])
+    _print(result, args.json)
+    svc.close()
+    return 0
+
+
+def cmd_decide(args, decision: str) -> int:
+    svc = _service(args)
+    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+    result = svc.memory_decide(bootstrap["context_version"], args.memory_id, decision)
+    _print(result, True)
+    svc.close()
+    return 0
+
+
+def cmd_forget(args) -> int:
+    svc = _service(args)
+    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+    result = svc.memory_delete(bootstrap["context_version"], args.memory_id)
+    _print(result, True)
+    svc.close()
+    return 0
+
+
+def cmd_update(args) -> int:
+    svc = _service(args)
+    bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+    result = svc.memory_update(
+        bootstrap["context_version"],
+        args.memory_id,
+        content=args.content,
+        confidence=args.confidence,
+    )
+    _print(result, True)
+    svc.close()
+    return 0
+
+
 def cmd_docs(args) -> int:
     svc = _service(args)
     if args.docs_command == "add":
@@ -291,6 +353,40 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--scope", choices=["auto", "project", "global"], default="auto")
     p.add_argument("--k", type=int, default=8)
     p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("ingest", help="store raw text as an episode and extract candidate memories")
+    p.add_argument("text", nargs="?", default=None)
+    p.add_argument("--file", default=None)
+    p.add_argument("--project-path", default=None)
+    p.add_argument("--source", default="conversation")
+    p.add_argument("--auto-activate", action="store_true")
+    p.set_defaults(func=cmd_ingest)
+
+    p = sub.add_parser("candidates", help="list candidates waiting for review")
+    p.add_argument("--project-path", default=None)
+    p.set_defaults(func=cmd_candidates)
+
+    p = sub.add_parser("approve", help="approve a candidate memory")
+    p.add_argument("memory_id")
+    p.add_argument("--project-path", default=None)
+    p.set_defaults(func=lambda args: cmd_decide(args, "approve"))
+
+    p = sub.add_parser("reject", help="reject a candidate memory")
+    p.add_argument("memory_id")
+    p.add_argument("--project-path", default=None)
+    p.set_defaults(func=lambda args: cmd_decide(args, "reject"))
+
+    p = sub.add_parser("forget", help="soft-delete a memory")
+    p.add_argument("memory_id")
+    p.add_argument("--project-path", default=None)
+    p.set_defaults(func=cmd_forget)
+
+    p = sub.add_parser("update", help="update a memory's content or confidence")
+    p.add_argument("memory_id")
+    p.add_argument("--content", default=None)
+    p.add_argument("--confidence", type=float, default=None)
+    p.add_argument("--project-path", default=None)
+    p.set_defaults(func=cmd_update)
 
     p = sub.add_parser("docs", help="documents")
     p_sub = p.add_subparsers(dest="docs_command", required=True)
