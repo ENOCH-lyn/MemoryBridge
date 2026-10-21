@@ -1,8 +1,9 @@
 # MemoryBridge 架构概览
 
-- 状态：v0.1（立项阶段，随 PRD 更新）
+- 状态：v0.2（立项阶段，随 PRD 与 ADR 更新）
 - 范围：单用户、2 设备、3 个 agent、3 个项目
 - 详细需求见 [产品需求文档](../需求/MemoryBridge-产品需求文档.md) 第 6 章
+- 完整决策、备选与复审条件见 [ADR 架构决策文档](MemoryBridge-ADR架构决策文档.md)
 
 ## 1. 设计目标
 
@@ -86,15 +87,26 @@ flowchart LR
 
 ## 4. 关键决策（ADR 摘要）
 
-| 编号 | 决策 | 选择 | 放弃 |
-|---|---|---|---|
-| ADR-01 | 同步模型 | 服务端权威 + op log + 客户端游标 | 全文 CRDT |
-| ADR-02 | 存储 | PostgreSQL + pgvector + tsvector | 专用向量库 + 图库（P2） |
-| ADR-03 | 接入 | MCP 优先，CLI/Hook 补充 | 每家写插件 |
-| ADR-04 | 经验演化 | 候选 → 验证 → 晋升 → 退役 | 自动全量写入 |
-| ADR-05 | 加密 | TLS + 静态加密；E2EE 放 P2 | 一开始 E2EE |
-| ADR-06 | 部署 | 单机 Docker Compose | K8s |
-| ADR-07 | 文档 | Markdown + Git 为真相 | 数据库存正文 |
+完整决策、备选方案、代价与复审条件见 [ADR 架构决策文档](MemoryBridge-ADR架构决策文档.md)。当前基线：
+
+- **自进化边界**：外部经验记忆，不更新模型权重（ADR-001）。
+- **范围**：单用户、2 设备、3 个 agent、3 个项目（ADR-002）。
+- **接入**：MCP 优先，CLI/Hook 补充（ADR-003）。
+- **记忆**：Episode + 结构化 Memory Item + Provenance（ADR-004）。
+- **写入**：自动采集 + 候选/审核，全局晋升需人工确认（ADR-005）。
+- **同步**：服务端权威 op log + 客户端游标（ADR-006）。
+- **冲突**：字段级合并 + 冲突副本 + 人工裁决（ADR-007）。
+- **存储**：PostgreSQL + pgvector + 全文检索（ADR-008，W2 spike 验证）。
+- **检索**：混合召回 + 图扩展 + 重排 + Context Pack（ADR-009，W6 评测）。
+- **经验**：候选 → 验证 → 晋升 → 退役（ADR-010）。
+- **文档**：Markdown + Git 为真相（ADR-011）。
+- **权限**：本地账号 + 设备 token + Space ACL（ADR-012）。
+- **安全**：采集前脱敏、信任级、审计；E2EE 暂缓（ADR-013）。
+- **部署**：单机 Docker Compose（ADR-014）。
+- **复用**：自研薄流水线，接口可替换（ADR-015，W2 前定）。
+- **评测**：公开基准 + CrossProjectBench + 消融（ADR-016）。
+
+尚未定稿的选型（存储、检索、复用策略、许可证）在 ADR 中标记为“建议/待决策”，实施前必须过对应门槛，不得把建议写成已实现。
 
 ## 5. 数据模型（摘要）
 
@@ -120,6 +132,8 @@ flowchart LR
 - 本地模型可选（Ollama + bge-m3）；课程演示建议 API embedding。
 
 ## 7. 待定项
+
+以下问题的完整背景、触发条件与负责人见 [ADR 架构决策文档](MemoryBridge-ADR架构决策文档.md) 的 ADR-017 与附录 A：
 
 1. 同步是否在 10 万条后引入分片/外部向量库。
 2. 是否复用 Mem0/Graphiti 作为抽取/图组件，还是保持自研薄流水线。

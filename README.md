@@ -29,11 +29,12 @@
 ## 文档入口
 
 1. [产品需求文档](doc/需求/MemoryBridge-产品需求文档.md)：定位、用户、功能需求、非功能、数据模型、API/MCP、同步、安全、评测与实施计划。
-2. [调研与可行性](doc/调研/MemoryBridge-调研与可行性.md)：竞品矩阵、学术脉络、可行性评分、ADR、Go/No-Go 门槛。
-3. [架构概览](doc/架构/MemoryBridge-架构概览.md)：组件、数据流、关键决策与待定项。
-4. [12 周实施计划](doc/计划/MemoryBridge-12周实施计划.md)：里程碑、门槛、分工与预算。
-5. [文档索引](doc/README.md)：全部文档与后续拆分计划。
-6. [AI 协作规范](AGENTS.md)：事实来源、文档职责、Git 与验证约束。
+2. [调研与可行性](doc/调研/MemoryBridge-调研与可行性.md)：竞品矩阵、学术脉络、可行性评分、Go/No-Go 门槛。
+3. [架构概览](doc/架构/MemoryBridge-架构概览.md)：组件、数据流、部署与待定项。
+4. [ADR 架构决策](doc/架构/MemoryBridge-ADR架构决策文档.md)：17 条决策的背景、备选、代价、验证与复审条件。
+5. [12 周实施计划](doc/计划/MemoryBridge-12周实施计划.md)：里程碑、门槛、分工与预算。
+6. [文档索引](doc/README.md)：全部文档与后续拆分计划。
+7. [AI 协作规范](AGENTS.md)：事实来源、文档职责、Git 与验证约束。
 
 ## 仓库结构
 
@@ -46,6 +47,7 @@
 │  ├─ 需求/MemoryBridge-产品需求文档.md
 │  ├─ 调研/MemoryBridge-调研与可行性.md
 │  ├─ 架构/MemoryBridge-架构概览.md
+│  ├─ 架构/MemoryBridge-ADR架构决策文档.md
 │  └─ 计划/MemoryBridge-12周实施计划.md
 └─ .gitignore
 ```
@@ -58,6 +60,7 @@
 - [x] 可行性判断与 Go/No-Go 门槛
 - [x] PRD v1.0
 - [x] 架构概览与 12 周计划
+- [x] ADR 架构决策文档（17 条）
 - [ ] 技术选型验证（MCP + Postgres/pgvector 最小闭环）
 - [ ] 记忆抽取与检索原型
 - [ ] 跨设备同步与冲突测试

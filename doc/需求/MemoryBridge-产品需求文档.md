@@ -978,16 +978,18 @@ retire(skill):
 
 ## 10. 开放问题与决策记录
 
+> 完整 ADR（背景、备选、代价、验证与复审条件）见 [`doc/架构/MemoryBridge-ADR架构决策文档.md`](../架构/MemoryBridge-ADR架构决策文档.md)。下表为摘要，编号与 ADR 文档一致；冲突时以 ADR 文档为准。
+
 | 编号 | 问题 | 当前决策 | 待定/复审 |
 |---|---|---|---|
-| ADR-01 | 同步用 CRDT 还是 op log | op log + 服务端权威 | W7 压测后复审 |
-| ADR-02 | 向量库 | pgvector | 10 万条后评估 |
-| ADR-03 | 是否复用 Mem0/Graphiti | 自研薄流水线，接口可替换 | W3 前定 |
-| ADR-04 | E2EE | P2；先 TLS + 静态加密 | 若用户强需求再设计 |
-| ADR-05 | 文档存储 | Git + 文件系统 | 团队版再评估对象存储 |
-| ADR-06 | 多用户 | P2 | 课程周期内不做 |
-| ADR-07 | 许可证 | 建议 Apache-2.0 | 与指导教师确认 |
-| ADR-08 | 默认模型 | DeepSeek + bge-m3（API） | 隐私模式可切本地 |
+| ADR-006 | 同步用 CRDT 还是 op log | op log + 服务端权威 | W7 收敛测试后复审 |
+| ADR-008 | 向量库/存储 | Postgres + pgvector + 全文 | W2 spike 后定 |
+| ADR-015 | 是否复用 Mem0/Graphiti | 自研薄流水线，接口可替换 | W2 前定 |
+| ADR-013 | E2EE | P2；先 TLS + 静态加密 | 若用户强需求再设计 |
+| ADR-011 | 文档存储 | Markdown + Git | 团队版再评估对象存储 |
+| ADR-017 | 多用户 | P2 | 课程周期内不做 |
+| 附录 A Q-01 | 许可证 | 建议 Apache-2.0 | 与指导教师确认 |
+| 附录 A Q-02 | 默认模型 | DeepSeek + bge-m3（API） | 隐私模式可切本地 |
 
 **待确认问题（需用户/教师拍板）**：
 
