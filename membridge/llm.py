@@ -47,11 +47,15 @@ class LLMConfig:
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
+        try:
+            timeout = float(os.environ.get("MEMBRIDGE_LLM_TIMEOUT", "45") or 45)
+        except (TypeError, ValueError):
+            timeout = 45.0
         return cls(
             base_url=os.environ.get("MEMBRIDGE_LLM_BASE_URL", "").strip(),
             api_key=os.environ.get("MEMBRIDGE_LLM_API_KEY", "").strip(),
             model=os.environ.get("MEMBRIDGE_LLM_MODEL", "").strip(),
-            timeout=float(os.environ.get("MEMBRIDGE_LLM_TIMEOUT", "45") or 45),
+            timeout=timeout,
         )
 
     def public(self) -> dict[str, Any]:
