@@ -131,7 +131,24 @@ flowchart LR
 - 只暴露 443；备份 `pg_dump` + 对象存储，定期恢复演练。
 - 本地模型可选（Ollama + bge-m3）；课程演示建议 API embedding。
 
-## 7. 待定项
+## 7. MVP 实现状态
+
+| 能力 | 目标架构 | 当前 MVP |
+|---|---|---|
+| MCP 接入 | stdio + HTTP，Resources/Prompts | stdio + resources/prompts；远程靠本地 proxy |
+| Identity / Gate | 版本化 Identity Pack + context_version | 已实现 |
+| 存储 | PostgreSQL + pgvector | SQLite 单文件 |
+| 检索 | 混合召回 + 图扩展 + 重排 | 词法（英文词 + 中文双字） |
+| 跨设备 | op log + 冲突副本 | 中心 HTTP Hub + 本地 proxy + Bearer |
+| 文档 | Markdown + Git | SQLite 文档表 + 词法检索 |
+| 技能 | 候选→验证→晋升 | 最小 skills 表 + 状态字段 |
+| 抽取 | LLM 抽取/去重/冲突 | 手动/agent 显式写入 |
+| 鉴权 | 账号/OIDC + 设备 token | 单一 Bearer token |
+| 部署 | Docker Compose | Python 进程 + SQLite |
+| 控制台 | Web 管理/审核 | 无 |
+| 评测 | CrossProjectBench + 消融 | 18 个功能测试，迁移实验未开始 |
+
+## 8. 待定项
 
 以下问题的完整背景、触发条件与负责人见 [ADR 架构决策文档](MemoryBridge-ADR架构决策文档.md) 的 ADR-017 与附录 A：
 
@@ -141,6 +158,6 @@ flowchart LR
 4. 多用户团队版的权限模型。
 5. 许可证（建议 Apache-2.0）。
 
-## 8. 非目标
+## 9. 非目标
 
 不训练/微调模型；不做多租户 SaaS、实时协作、移动端、通用图数据库运维。以上为 P2 或不做。
