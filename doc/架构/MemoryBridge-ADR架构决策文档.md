@@ -133,6 +133,7 @@ W1 与教师确认课程要求；若要求团队版，砍掉经验晋升或图�
 - **CLI/Hook 补充**：`mb` 命令负责登录、同步、手动记忆、导入；Hook 负责会话边界与工具摘要采集。
 - **版本协商**：按 MCP 版本协商；不支持 Resources 的客户端降级为 Tools。
 - **fail-open**：检索失败返回空结果 + 警告，不阻塞主任务；写入失败进本地 outbox。
+- **调研补充（2026-10-21）**：MCP `InitializeResult.instructions` 是可选字段，规范只说客户端 **MAY** 注入；不能假设所有客户端都会把它放进模型上下文。启动协议需要 `instructions` + 工具描述 + Bootstrap Gate + CLI 兜底，详见[开源复用调研](../调研/MemoryBridge-开源复用调研.md)。
 
 ### 备选
 
@@ -576,6 +577,7 @@ Mem0、MemOS、Graphiti 已提供抽取、去重、图记忆等能力。全部�
 - **可替换组件**：`Extractor`、`Embedder`、`Reranker`、`GraphStore` 定义接口；默认用 LLM + bge-m3；可选接入 Mem0 的抽取或 Graphiti 的时序图，但必须适配到本项目 schema。
 - **不做 fork**：不复制其代码库；以依赖/服务方式集成，保留许可证与升级路径。
 - **W2 spike**：用 100 条 Episode 比较“自研抽取”与“Mem0 抽取”的精确率/成本/延迟；再决定是否替换 `Extractor` 实现。
+- **调研补充（2026-10-21）**：mcp-memory-service（bootstrap profile）、Memobase（结构化画像抽取）、Letta MemFS（root 身份 + lazy 目录 + Git）、MemOS（L1/L2/L3 + Skill）均有可借鉴部分；完整评估、复用矩阵与三条路线见[开源复用调研](../调研/MemoryBridge-开源复用调研.md)。
 
 ### 备选
 
