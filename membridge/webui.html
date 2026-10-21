@@ -431,9 +431,10 @@ function saveSettings(){
   localStorage.setItem('mb_token',state.token); localStorage.setItem('mb_project',state.project);
 }
 function mcpSnippet(){
-  return JSON.stringify({
-    mcpServers:{membridge:{command:'membridge',args:['serve','--remote',location.origin,'--token','<MEMBRIDGE_TOKEN>','--project',state.project||'<PROJECT_PATH>']}}
-  }, null, 2);
+  const args=['serve','--remote',location.origin];
+  if(state.token) args.push('--token','<MEMBRIDGE_TOKEN>');
+  args.push('--project',state.project||'<PROJECT_PATH>');
+  return JSON.stringify({mcpServers:{membridge:{command:'membridge',args}}}, null, 2);
 }
 async function bootstrap(){
   const data=await rpc('bootstrap',[],{project_path:state.project||null,client:'web'});
