@@ -308,7 +308,14 @@ class AgentSyncService:
         row = self.conn.execute("SELECT * FROM projects WHERE key = ?", (project_key,)).fetchone()
         now = utcnow()
         if row is None:
-            project_name = name or Path(normalized).name or normalized
+            marker_name = None
+            marker = Path(normalized) / ".membridge-project.json"
+            if marker.exists():
+                try:
+                    marker_name = str(json_loads(marker.read_text(encoding="utf-8"), {}).get("name") or "").strip() or None
+                except OSError:
+                    marker_name = None
+            project_name = name or marker_name or Path(normalized).name or normalized
             self.conn.execute(
                 "INSERT INTO projects(id, key, name, path, conventions_json, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -377,6 +384,15 @@ class AgentSyncService:
         return f"git:{host.lower()}/{path.lower()}"
 
     def _project_key(self, normalized: str, name: str | None = None) -> str:
+        marker = Path(normalized) / ".membridge-project.json"
+        if marker.exists():
+            try:
+                data = json_loads(marker.read_text(encoding="utf-8"), {})
+                key = str(data.get("key") or "").strip()
+                if key:
+                    return key
+            except OSError:
+                pass
         remote = self._git_remote(normalized)
         if remote:
             return self._normalize_remote(remote)
@@ -399,6 +415,27 @@ class AgentSyncService:
             return None
         row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         return self._project_dict(row) if row else None
+
+    def project_list(self) -> dict[str, Any]:
+        rows = self.conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
+        items = []
+        for row in rows:
+            item = self._project_dict(row)
+            item["memories"] = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM memories WHERE project_id = ? AND status = 'active'", (row["id"],)
+            ).fetchone()["n"]
+            item["documents"] = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM documents WHERE project_id = ?", (row["id"],)
+            ).fetchone()["n"]
+            item["skills"] = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM skills WHERE project_id = ?", (row["id"],)
+            ).fetchone()["n"]
+            item["updated_at"] = row["updated_at"]
+            items.append(item)
+        global_memories = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM memories WHERE project_id IS NULL AND status = 'active'"
+        ).fetchone()["n"]
+        return {"items": items, "count": len(items), "global_memories": global_memories}
 
     # ------------------------------------------------------------------
     # bootstrap / context gate
@@ -456,11 +493,15 @@ class AgentSyncService:
 
         project_id = project["id"] if project else None
         recent = self._recent_items(project_id)
+        projects = self.project_list()
+        global_memories = self._bootstrap_memories(None)
+        project_memories = self._bootstrap_memories(project_id) if project_id else []
         available = {
             "memories": self._count_memories(project_id, "active"),
             "candidates": self._count_memories(project_id, "candidate"),
             "documents": self._count("documents", project_id),
             "skills": self._count("skills", project_id),
+            "projects": projects["count"],
         }
         return {
             "agent_id": resolved_agent,
@@ -469,12 +510,17 @@ class AgentSyncService:
             "global_directives": [d["content"] for d in directives if d["scope"] == "global"],
             "project_directives": [d["content"] for d in directives if d["scope"] == "project"],
             "project": project,
+            "projects": projects["items"],
+            "global_memories": global_memories,
+            "project_memories": project_memories,
             "recent_decisions": recent["decisions"],
             "recent_lessons": recent["lessons"],
             "available": available,
             "context_version": context_version,
             "next_actions": [
-                "Use memory_search for facts, decisions and lessons",
+                "Use project_list to see all projects and their memory counts",
+                "Use memory_search(scope='auto') for current project + global; scope='all' for cross-project",
+                "Use memory_list(project_id=...) to batch-read a known project",
                 "Use doc_search / doc_read for project documents",
                 "Use skill_list / skill_get / skill_file for folder-shaped skills",
                 "When the user states a durable requirement, call memory_write directly with topic/scope/rationale",
@@ -485,9 +531,17 @@ class AgentSyncService:
                 "when": "when_user_states_durable_requirement",
                 "tool": "memory_write",
                 "approval": "none",
-                "note": "You are the writer; the UI is read-only. Use a stable topic and project scope.",
+                "note": "You are the writer; the UI is read-only. Use a stable topic and project scope; use global only for user-wide preferences.",
             },
         }
+
+    def _bootstrap_memories(self, project_id: str | None, limit: int = 20) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT * FROM memories WHERE status = 'active' AND project_id IS ? "
+            "ORDER BY pinned DESC, updated_at DESC LIMIT ?",
+            (project_id, max(1, min(int(limit), 50))),
+        ).fetchall()
+        return [self._memory_dict(row) for row in rows]
 
     def _count(self, table: str, project_id: str | None) -> int:
         if project_id:
@@ -574,6 +628,7 @@ class AgentSyncService:
             "topic": row["topic"],
             "rationale": row["rationale"],
             "conditions": row["conditions"],
+            "pinned": bool(row["pinned"]) if "pinned" in row.keys() else False,
             "episode_id": row["episode_id"],
             "evidence_quote": row["evidence_quote"],
             "version": row["version"],
@@ -608,6 +663,7 @@ class AgentSyncService:
         confidence: float = 0.85,
         source: str = "agent",
         evidence_quote: str | None = None,
+        pinned: bool | None = None,
     ) -> dict[str, Any]:
         """The normal AI-facing write path: direct active upsert, no approval queue.
 
@@ -644,7 +700,7 @@ class AgentSyncService:
         if existing:
             self.conn.execute(
                 "UPDATE memories SET type = ?, content = ?, confidence = ?, source = ?, topic = ?, "
-                "rationale = ?, conditions = ?, evidence_quote = ?, content_hash = ?, "
+                "rationale = ?, conditions = ?, evidence_quote = ?, content_hash = ?, pinned = ?, "
                 "version = version + 1, updated_at = ? WHERE id = ?",
                 (
                     type,
@@ -656,6 +712,7 @@ class AgentSyncService:
                     conditions.strip(),
                     evidence_quote,
                     digest,
+                    existing["pinned"] if pinned is None else (1 if pinned else 0),
                     now,
                     existing["id"],
                 ),
@@ -666,8 +723,8 @@ class AgentSyncService:
         memory_id = new_id("mem")
         self.conn.execute(
             "INSERT INTO memories(id, project_id, type, content, confidence, source, status, topic, rationale, "
-            "conditions, evidence_quote, content_hash, version, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, 1, ?, ?)",
+            "conditions, evidence_quote, content_hash, pinned, version, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 1, ?, ?)",
             (
                 memory_id,
                 target_project,
@@ -680,6 +737,7 @@ class AgentSyncService:
                 conditions.strip(),
                 evidence_quote,
                 digest,
+                1 if pinned else 0,
                 now,
                 now,
             ),
@@ -753,21 +811,24 @@ class AgentSyncService:
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
         selected = project_id if project_id is not None else session["project_id"]
-        if scope not in {"auto", "project", "global"}:
-            raise ValueError("scope must be auto, project or global")
-        if scope == "global":
+        if scope not in {"auto", "project", "global", "all"}:
+            raise ValueError("scope must be auto, project, global or all")
+        if scope == "all":
+            allowed = None
+        elif scope == "global":
             allowed = {None}
         elif scope == "project":
             allowed = {selected} if selected else {None}
         else:
             allowed = {selected, None} if selected else {None}
 
+        project_map = {row["id"]: self._project_dict(row) for row in self.conn.execute("SELECT * FROM projects").fetchall()}
         rows = self.conn.execute(
             "SELECT * FROM memories WHERE status = 'active' ORDER BY updated_at DESC"
         ).fetchall()
         scored: list[tuple[float, Any]] = []
         for row in rows:
-            if row["project_id"] not in allowed:
+            if allowed is not None and row["project_id"] not in allowed:
                 continue
             score = _score(
                 query,
@@ -783,6 +844,9 @@ class AgentSyncService:
         items = []
         for score, row in scored[: max(1, min(int(k), 50))]:
             item = self._memory_dict(row)
+            project = project_map.get(row["project_id"])
+            item["project_key"] = project["key"] if project else "global"
+            item["project_name"] = project["name"] if project else "global"
             item["score"] = round(score, 3)
             item["snippet"] = _snippet(row["content"], terms)
             item["citation"] = f"[mem:{row['id']}]"
@@ -794,28 +858,40 @@ class AgentSyncService:
         context_version: str,
         *,
         project_id: str | None = None,
+        scope: str = "auto",
         status: str = "active",
         limit: int = 50,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
         if status not in {"active", "candidate", "rejected", "deleted", "all"}:
             raise ValueError("status must be active, candidate, rejected, deleted or all")
+        if scope not in {"auto", "project", "global", "all"}:
+            raise ValueError("scope must be auto, project, global or all")
         selected = project_id if project_id is not None else session["project_id"]
         status_clause = "" if status == "all" else "status = ? AND "
         params: list[Any] = [] if status == "all" else [status]
-        if selected:
-            rows = self.conn.execute(
-                f"SELECT * FROM memories WHERE {status_clause}(project_id = ? OR project_id IS NULL) "
-                "ORDER BY updated_at DESC LIMIT ?",
-                (*params, selected, max(1, min(limit, 200))),
-            ).fetchall()
+        if scope == "global":
+            project_clause, project_params = "project_id IS NULL", []
+        elif scope == "all":
+            project_clause, project_params = "1 = 1", []
+        elif scope == "project":
+            project_clause, project_params = "project_id IS ?", [selected]
         else:
-            rows = self.conn.execute(
-                f"SELECT * FROM memories WHERE {status_clause}project_id IS NULL "
-                "ORDER BY updated_at DESC LIMIT ?",
-                (*params, max(1, min(limit, 200))),
-            ).fetchall()
-        return {"items": [self._memory_dict(r) for r in rows], "count": len(rows), "status": status}
+            project_clause, project_params = "(project_id IS ? OR project_id IS NULL)", [selected]
+        rows = self.conn.execute(
+            f"SELECT * FROM memories WHERE {status_clause}{project_clause} "
+            "ORDER BY updated_at DESC LIMIT ?",
+            (*params, *project_params, max(1, min(limit, 200))),
+        ).fetchall()
+        project_map = {row["id"]: self._project_dict(row) for row in self.conn.execute("SELECT * FROM projects").fetchall()}
+        items = []
+        for row in rows:
+            item = self._memory_dict(row)
+            project = project_map.get(row["project_id"])
+            item["project_key"] = project["key"] if project else "global"
+            item["project_name"] = project["name"] if project else "global"
+            items.append(item)
+        return {"items": items, "count": len(items), "status": status, "scope": scope}
 
     def memory_feedback(
         self,

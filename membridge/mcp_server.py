@@ -20,12 +20,16 @@ SUPPORTED_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 INSTRUCTIONS = (
     "MemoryBridge is the user's portable agent identity, memory, document and capability service. "
     "At the start of EVERY new conversation, before answering or using any other MemoryBridge tool, "
-    "call `agent_bootstrap`. It returns the persona, global directives, project context and a "
-    "`context_version`. Pass that `context_version` to every subsequent memory, document and skill tool. "
+    "call `agent_bootstrap`. It returns the persona, global directives, project context, "
+    "`projects`, auto-injected `global_memories`/`project_memories`, and a `context_version`. "
+    "Pass that `context_version` to every subsequent memory, document and skill tool. "
     "If you skip bootstrap, those tools return BOOTSTRAP_REQUIRED. "
+    "Use `project_list` to discover projects; `memory_search(scope='auto')` searches current project + global, "
+    "while `scope='all'` searches across all projects. `memory_list(project_id=...)` batch-reads a known project. "
     "The UI is READ-ONLY. You are the writer: when the user states a durable requirement, decision, "
     "lesson or preference, call `memory_write` directly with a stable `topic`, the right `scope` "
     "(project by default; global only for user-wide preferences), and a `rationale` plus `conditions`. "
+    "Set `pinned=true` for core user-wide facts that must be auto-injected in every future conversation. "
     "Do not create a candidate or ask the user to approve it. Use `doc_add` for documents, "
     "`skill_install`/`skill_file` for folder-shaped skills, and `identity_update` for persona changes. "
     "Put tone, tics and verbal habits inside `persona`; there is no separate sentence_end field. "
@@ -79,13 +83,13 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "memory_search",
         "title": "Search memory",
-        "description": "Search facts, preferences, decisions, lessons and procedures. Requires agent_bootstrap first.",
+        "description": "Search active memories. scope=auto (current project + global), project, global, or all (cross-project). Requires agent_bootstrap first.",
         "inputSchema": _schema(
             {
                 "context_version": CTX,
                 "query": {"type": "string"},
                 "project_id": {"type": "string"},
-                "scope": {"type": "string", "enum": ["auto", "project", "global"]},
+                "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]},
                 "k": {"type": "integer", "minimum": 1, "maximum": 50},
             },
             ["context_version", "query"],
@@ -131,6 +135,7 @@ TOOLS: list[dict[str, Any]] = [
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                 "source": {"type": "string"},
                 "evidence_quote": {"type": "string"},
+                "pinned": {"type": "boolean", "description": "Inject into future bootstrap context; use for catgirl core preferences."},
             },
             ["context_version", "content", "topic"],
         ),
@@ -166,11 +171,12 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "memory_list",
         "title": "List memory",
-        "description": "List active memory in the current project and global scope. Requires bootstrap.",
+        "description": "List active memory in the current project + global (scope=auto), project, global, or all. Requires bootstrap.",
         "inputSchema": _schema(
             {
                 "context_version": CTX,
                 "project_id": {"type": "string"},
+                "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]},
                 "status": {"type": "string", "enum": ["active", "candidate", "rejected", "deleted", "all"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 200},
             },
@@ -318,6 +324,13 @@ TOOLS: list[dict[str, Any]] = [
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
     },
     {
+        "name": "project_list",
+        "title": "List projects",
+        "description": "List all known projects with ids, keys, paths and memory/document/skill counts. Use this to discover project_id for batch reads. Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX}, ["context_version"]),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
         "name": "project_context",
         "title": "Project context",
         "description": "Return the current project's conventions, decisions, lessons and directives. Requires bootstrap.",
@@ -381,6 +394,7 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 confidence=float(args.get("confidence", 0.85)),
                 source=args.get("source", "agent"),
                 evidence_quote=args.get("evidence_quote"),
+                pinned=args.get("pinned"),
             )
         )
     if name == "identity_update":
@@ -420,6 +434,7 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
             service.memory_list(
                 ctx,
                 project_id=args.get("project_id"),
+                scope=args.get("scope", "auto"),
                 status=args.get("status", "active"),
                 limit=int(args.get("limit", 50)),
             )
@@ -492,6 +507,8 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
         )
     if name == "skill_file":
         return _ok(service.skill_file(ctx, args["skill_id"], args["path"]))
+    if name == "project_list":
+        return _ok(service.project_list())
     if name == "project_context":
         return _ok(service.project_context(ctx))
     return _err(f"Unknown tool: {name}")

@@ -9,7 +9,7 @@
 
 - **同一个 agent**：新会话调用 `agent_bootstrap`，返回人格、称呼、边界、全局指令、项目约定和 `context_version`。
 - **Bootstrap Gate**：没 bootstrap 就调记忆/文档/技能工具，返回 `BOOTSTRAP_REQUIRED`；身份或项目上下文变了，旧 context 返回 `CONTEXT_STALE`。
-- **项目隔离**：按 git remote 或目录名建稳定 project；默认检索“当前项目 + 全局”，不会把 A 项目私有记忆串到 B 项目。
+- **项目隔离**：按 `.membridge-project.json` / git remote / 目录名建稳定 project；默认检索“当前项目 + 全局”，`scope=all` 才跨项目。
 - **AI 直接写记忆**：`memory_write` 立即 upsert 为 active，不需要候选/批准；每条必须有稳定 `topic`，决策/教训必须有 `rationale` 和 `conditions`，避免把项目结论写成无场景的全局规则。
 - **AI 直接写身份**：`identity_update` 修改 persona、称呼、边界；语气、口癖、句尾都写在 persona 文本里，没有单独的 `sentence_end` 字段。
 - **AI 直接写文档 / 技能**：`doc_add` 写 Markdown；`skill_install` 安装文件夹技能（`SKILL.md` + scripts/references/assets）；UI 只显示。
@@ -94,6 +94,32 @@ Claude Code / Cursor / DSH 的 MCP 配置（把路径换成你的实际路径）
 如果已经 `pip install -e .`，可以去掉 `PYTHONPATH`，把 `command` 改成 `membridge`。
 
 **第一次对话**：客户端应把 `initialize.instructions` 注入模型；模型会先调 `agent_bootstrap`。如果某个客户端不注入 `instructions`，手动说一句“先调用 agent_bootstrap”即可，Gate 也会在后续工具调用时强制补调。
+
+## 项目、全局与“猫娘聊天记忆”
+
+**项目不是 AI 猜的**：MCP proxy 的 `--project` 或 `agent_bootstrap(project_path=...)` 传入项目根目录，服务端生成稳定 key：
+
+1. 根目录有 `.membridge-project.json`：用文件里的 `key`（解决两个同名目录冲突）。
+2. git 仓库有 `origin`：用 `git:host/path`，不同设备同一仓库落到同一 project。
+3. 否则用目录名：`name:<basename>`。
+
+所以同一个仓库在另一台电脑上只要 remote 相同，仍然是同一个 project；不是靠“AI 记得”。
+
+**什么时候用哪层记忆**：
+
+| 层 | 写入 | 读取 |
+|---|---|---|
+| Identity | `identity_update` | 每次 bootstrap 自动返回 |
+| Global memory | `memory_write(scope="global", pinned=true)` | 每次 bootstrap 自动注入 `global_memories`；`memory_search(scope=auto/all)` 也能搜到 |
+| Project memory | `memory_write(scope="project")` | 只在当前 project 的 `memory_search(scope="auto")` / bootstrap `project_memories` 里出现；其他 project 默认看不到 |
+| 跨项目 | — | `memory_search(scope="all")`；`project_list` 拿 project_id 后 `memory_list(project_id=...)` 批量读 |
+
+**猫娘聊天共通**：
+
+- 人格、口癖、称呼在全局 Identity，bootstrap 必带。
+- “主人喜欢黑色”这类用户级事实用 `global + pinned`，bootstrap 自动注入所有 project。
+- “Alpha 用 SQLite”用 `project`，只在 Alpha 出现；Beta 默认搜不到，`scope=all` 才能跨项目看到。
+- 这个行为已用 3 个隔离 Claude Code/Codex 会话验证：Alpha 写 project+global；Beta 默认 0 条 Alpha、`scope=all` 2 条；Gamma 只 bootstrap 就拿到全局 pinned 记忆和猫娘人格。
 
 ## 跨设备：Hub + 本地 Proxy
 
@@ -224,8 +250,8 @@ python -m membridge serve --remote http://127.0.0.1:8787 --token $env:MEMBRIDGE_
 |---|---|
 | Identity | 人格、称呼、边界、版本；语气/口癖写在 persona 文本里 |
 | Directive | 全局或项目级 standing instruction，带优先级 |
-| Project | git remote 或目录名生成稳定 key；保存 name / path / conventions |
-| Memory | `fact / preference / decision / lesson / procedure / reference`，带 topic、scope、rationale、conditions、置信度与来源 |
+| Project | `.membridge-project.json` / git remote / 目录名生成稳定 key；保存 name / path / conventions |
+| Memory | `fact / preference / decision / lesson / procedure / reference`，带 topic、scope、rationale、conditions、pinned、置信度与来源 |
 | Episode | 原始对话/文档片段（批量 ingest 时的证据来源；不是主写入路径） |
 | Document | Markdown/ADR，按项目挂载，由 agent 通过 `doc_add` 写入 |
 | Skill | 文件夹包：`SKILL.md` + scripts/references/assets + 状态（candidate/validated/global） |
@@ -276,7 +302,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 27 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote）、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit。
+当前 29 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入。
 
 ## 文档
 

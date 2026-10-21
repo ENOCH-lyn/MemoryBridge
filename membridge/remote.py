@@ -34,6 +34,7 @@ ALLOWED_METHODS = {
     "list_directives",
     "ensure_project",
     "get_project",
+    "project_list",
     "memory_add",
     "memory_write",
     "memory_search",

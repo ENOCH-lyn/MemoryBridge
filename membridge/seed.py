@@ -69,6 +69,7 @@ def seed(service: AgentSyncService) -> dict:
         conditions="默认适用于所有项目；若某项目有团队规范，以项目指令为准。",
         confidence=0.95,
         source="seed",
+        pinned=True,
     )
     service.memory_write(
         ctx,

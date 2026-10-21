@@ -83,6 +83,54 @@ class MemoryWriteTest(unittest.TestCase):
         actions = [item["action"] for item in self.svc.audit_list()["items"]]
         self.assertIn("identity.update", actions)
 
+    def test_project_list_cross_project_search_and_global_injection(self) -> None:
+        alpha = self.svc.bootstrap(project_path="alpha", client="test")
+        beta = self.svc.bootstrap(project_path="beta", client="test")
+        self.svc.memory_write(
+            alpha["context_version"],
+            "Alpha 项目使用 SQLite。",
+            type="decision",
+            topic="decision.storage",
+            scope="project",
+            rationale="Alpha 需要离线运行。",
+            conditions="仅 Alpha。",
+        )
+        self.svc.memory_write(
+            beta["context_version"],
+            "Beta 项目使用 Postgres。",
+            type="decision",
+            topic="decision.storage",
+            scope="project",
+            rationale="Beta 需要并发。",
+            conditions="仅 Beta。",
+        )
+        self.svc.memory_write(
+            beta["context_version"],
+            "主人喜欢黑色。",
+            type="preference",
+            topic="preference.color",
+            scope="global",
+            rationale="用户跨项目偏好。",
+            conditions="所有项目。",
+            pinned=True,
+        )
+        projects = self.svc.project_list()
+        names = {item["name"] for item in projects["items"]}
+        self.assertIn("alpha", names)
+        self.assertIn("beta", names)
+        self.assertGreaterEqual(projects["count"], 2)
+
+        beta_default = self.svc.memory_search(beta["context_version"], "Alpha")
+        self.assertEqual(beta_default["count"], 0)
+        beta_all = self.svc.memory_search(beta["context_version"], "Alpha", scope="all")
+        self.assertEqual(beta_all["count"], 1)
+        self.assertEqual(beta_all["items"][0]["project_name"], "alpha")
+        beta_memories = self.svc.memory_list(beta["context_version"], scope="all")
+        self.assertGreaterEqual(beta_memories["count"], 3)
+        boot = self.svc.bootstrap(project_path="beta", client="test")
+        self.assertTrue(any(m["topic"] == "preference.color" for m in boot["global_memories"]))
+        self.assertTrue(all(m["project_id"] is None for m in boot["global_memories"]))
+
 
 if __name__ == "__main__":
     unittest.main()

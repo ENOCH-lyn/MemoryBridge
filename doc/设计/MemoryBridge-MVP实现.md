@@ -47,16 +47,34 @@ mcp_server.py
 | `sessions` | context_version、agent_id、project_id、identity_version、过期时间 |
 | `audit_log` | 追加写审计；UI「活动」读它 |
 
+## 3.1 项目识别与上下文注入
+
+```text
+project_path
+  ├─ .membridge-project.json {"key":"custom:team/project","name":"..."} 优先
+  ├─ git origin → git:host/path
+  └─ 否则 name:<basename>
+project_id = sha1(project_key)[:12]
+```
+
+- `bootstrap(project_path)` 自动创建/更新 project，并返回 `project`、`projects`（全部项目+计数）、`global_memories`、`project_memories`。
+- `global_memories`：全局 active，pinned 优先，最多 20 条；新项目无搜索也能看到。
+- `project_memories`：当前项目 active，pinned/最近优先，最多 20 条。
+- `memory_search(scope=auto)`：当前项目 + 全局；`scope=all`：跨全部项目；结果带 `project_name/key`。
+- `project_list`：列出项目 id/key/name/path/记忆/文档/技能计数；`memory_list(project_id=...)` 批量读。
+- 同名目录可通过 `.membridge-project.json` 覆盖 key，避免 `name:src` 撞车。
+
 ## 4. Bootstrap 流程
 
 ```text
 client → agent_bootstrap(project_path, agent_id, client)
-  ├─ ensure_project(project_path)        # git remote / 目录名 → 稳定 key，幂等
+  ├─ ensure_project(project_path)        # marker / git remote / 目录名 → 稳定 key，幂等
   ├─ identity = get_identity()
   ├─ directives = global + project
   ├─ context_version = sha256(identity.version, directives, project.conventions)
   ├─ INSERT OR REPLACE sessions(...)
-  └─ return { identity, directives, project, context_version, available, next_actions }
+  └─ return { identity, directives, project, projects, global_memories,
+              project_memories, context_version, available, next_actions }
 ```
 
 后续工具：
@@ -67,7 +85,7 @@ memory_search(context_version, query)
   │   ├─ session 不存在 → BOOTSTRAP_REQUIRED
   │   ├─ session 过期 → CONTEXT_STALE
   │   └─ 当前 identity/directives/project 哈希 ≠ ctx → CONTEXT_STALE
-  └─ scope: 当前项目 + global（auto）/ 仅项目 / 仅 global
+  └─ scope: 当前项目 + global（auto）/ 仅项目 / 仅 global / 全部项目（all）
 ```
 
 `context_version` 只哈希“身份 + 指令 + 项目约定”，不哈希记忆条数；新增记忆不会让会话失效，改人格/项目约定会。
@@ -76,7 +94,7 @@ memory_search(context_version, query)
 
 ```text
 memory_write(ctx, content, topic, type, scope="project",
-             rationale, conditions, confidence)
+             rationale, conditions, confidence, pinned=false)
   ├─ validate_context()
   ├─ topic 必须是稳定 lowercase key（如 decision.storage.sqlite）
   ├─ decision/lesson 必须有 rationale
@@ -91,6 +109,7 @@ memory_write(ctx, content, topic, type, scope="project",
 - `topic` 是治理核心：后续修正更新同一条，不堆近似重复。
 - `scope` 防止“A 项目用 SQLite”被写成所有项目都必须用 SQLite。
 - `rationale` 记录为什么；`conditions` 记录适用边界（环境/阶段/并发/团队规范）。
+- `pinned=true` 的记忆优先进入 bootstrap；global pinned 用于“主人喜欢黑色”这类跨项目核心事实。
 - 身份用 `identity_update`；文档用 `doc_add`；技能用 `skill_install`/`skill_file`。
 - `memory_ingest` / 服务端 LLM 抽取已移除；AI 客户端自己判断何时调用 `memory_write`。
 - **技能是文件夹**：`SKILL.md`（YAML frontmatter + 正文）+ `scripts/`、`references/`、`assets/`。Hub 落盘到 `data/skills/<skill_id>/`，DB 只存元数据与文件清单；`skill_install` / `skill_file` 读写整个包，UI 只读查看。
@@ -149,7 +168,18 @@ Hub 在 `GET /` 直接返回 `webui.html`（单文件 HTML/CSS/JS，无构建、
 | MemOS | L1 trace / L2 policy / L3 world model / Skill | 本项目保留 Skill 文件夹与 audit，不引入服务端 LLM |
 | 官方 MCP memory | 先 “Remembering” 再检索 | 本项目用 `BOOTSTRAP_REQUIRED` 半强制 |
 
-## 8. 已知限制与下一步
+## 8. 开源对照（本项目采用的模式）
+
+- [Mem0](https://github.com/mem0ai/mem0)：`user_id` / `agent_id` / `run_id` + metadata 过滤 → 本项目用 `scope=global|project`、`project_id`、`topic` 表达；不把项目结论写成全局。
+- [Letta memory blocks](https://docs.letta.com/guides/agents/memory-blocks)：core memory 固定注入 + archival memory 检索 → 本项目 bootstrap 注入 `global_memories`/`project_memories`（pinned 优先），其余走 `memory_search`。
+- [Zep](https://github.com/getzep/zep)：按 user/session/namespace 分图 → 本项目用 project key + project_id 分区；跨项目只允许显式 `scope=all`。
+- [Basic Memory](https://github.com/basicmachines-co/basic-memory)：project = 本地目录，Markdown 为真相 → 本项目以 project_path 识别，文档仍需 agent 通过 `doc_add` 写入。
+- [mcp-memory-service](https://github.com/doobidoo/mcp-memory-service)：bootstrap profile 的 token 预算与 avoid rules → 本项目限制 bootstrap 记忆条数并优先 pinned。
+- [MemOS](https://github.com/MemTensor/MemOS)：分层 memory / skill → 本项目保留 Skill 文件夹 + audit，不引入服务端 LLM 抽取。
+
+设计结论：**项目是显式上下文，不是 AI 猜的；全局是显式 scope，不是默认；跨项目是显式查询，不是隐式混入。**
+
+## 9. 已知限制与下一步
 
 1. 远程：已有 Hub + 本地 proxy + Bearer；待 TLS、账号体系、限流、Hub 高可用。
 2. 多设备同步：Hub 是中心 SQLite；待 op log + 游标 + 冲突副本，当前并发写最后写入生效。

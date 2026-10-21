@@ -149,7 +149,7 @@ flowchart LR
 | 部署 | Docker Compose | Dockerfile/compose 已提供；本机 Docker Hub 不可达，未完成构建验证 |
 | 控制台 | Web 管理/审核 | Material 3 单页只读 UI（概览/记忆/文档/技能/身份/活动/连接） |
 | 自动化 | 自动采集/同步 | AI 主动调用 `memory_write` / `doc_add` / `skill_install` / `identity_update`；无候选/批准；UI 只读 |
-| 评测 | CrossProjectBench + 消融 | 27 个功能测试，迁移实验未开始 |
+| 评测 | CrossProjectBench + 消融 | 29 个功能测试，迁移实验未开始 |
 
 ## 8. 待定项
 

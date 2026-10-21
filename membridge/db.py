@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS memories (
     topic       TEXT,
     rationale   TEXT,
     conditions  TEXT,
+    pinned      INTEGER NOT NULL DEFAULT 0,
     episode_id  TEXT,
     evidence_quote TEXT,
     content_hash TEXT,
@@ -197,8 +198,11 @@ def init_db(conn: sqlite3.Connection) -> None:
     for column in ("topic", "rationale", "conditions"):
         if column not in memory_columns:
             conn.execute(f"ALTER TABLE memories ADD COLUMN {column} TEXT")
+    if "pinned" not in memory_columns:
+        conn.execute("ALTER TABLE memories ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_topic ON memories(project_id, topic, status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_pinned ON memories(project_id, status, pinned)")
     skill_columns = {row[1] for row in conn.execute("PRAGMA table_info(skills)").fetchall()}
     for column, ddl in {
         "slug": "TEXT",

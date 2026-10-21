@@ -217,7 +217,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
           </div>
         </div>
         <div class="grid-3">
-          <div class="card stat"><div class="eyebrow">活跃记忆</div><div class="num" id="ovMemories">0</div><div class="meta">文档 <span id="ovDocs">0</span> · 技能 <span id="ovSkills">0</span></div></div>
+          <div class="card stat"><div class="eyebrow">活跃记忆</div><div class="num" id="ovMemories">0</div><div class="meta">项目 <span id="ovProjects">0</span> · 文档 <span id="ovDocs">0</span> · 技能 <span id="ovSkills">0</span></div></div>
           <div class="card stat"><div class="eyebrow">写入模式</div><div class="num" id="ovLLM">AI 直接</div><div class="meta" id="ovLLMModel">memory_write · 无候选</div></div>
           <div class="card stat"><div class="eyebrow">上下文</div><div class="num" id="ovCtx">—</div><div class="meta" id="ovCtxShort">身份 + 指令 + 项目约定</div></div>
         </div>
@@ -433,6 +433,7 @@ function renderOverview(){
   $('#ovMemories').textContent=a.memories??c.memories_active??0;
   $('#ovDocs').textContent=a.documents??c.documents??0;
   $('#ovSkills').textContent=a.skills??c.skills??0;
+  $('#ovProjects').textContent=a.projects??'—';
   $('#ovCtx').textContent=state.ctx?'已绑定':'—';
   $('#ovCtxShort').textContent=state.ctx?state.ctx:'身份 + 指令 + 项目约定';
   const badgeMem=$('#badgeMem');
@@ -452,7 +453,7 @@ function renderIdentity(){
 }
 function memoryHTML(m){
   const quote=(m.evidence_quote && m.evidence_quote!==m.content)?`<div class="quote">${esc(m.evidence_quote)}</div>`:'';
-  const scope=m.project_id?'project':'global';
+  const scope=m.project_id?(m.project_name||'project'):'global';
   const rationale=m.rationale?`<div class="quote"><b>为什么：</b>${esc(m.rationale)}</div>`:'';
   const conditions=m.conditions?`<div class="quote"><b>适用条件：</b>${esc(m.conditions)}</div>`:'';
   return `<div class="item"><div class="row-meta"><span class="type ${esc(m.type)}">${esc(m.type)}</span><span class="type">${scope}</span><span class="hint">${esc(m.topic||'no-topic')} · conf ${esc(m.confidence)} · v${esc(m.version??1)}</span></div>

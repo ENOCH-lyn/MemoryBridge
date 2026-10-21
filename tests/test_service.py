@@ -38,6 +38,18 @@ class ServiceTest(unittest.TestCase):
         self.assertIn("cursor", result["items"][0]["content"])
         self.assertTrue(result["items"][0]["citation"].startswith("[mem:"))
 
+    def test_project_marker_overrides_basename(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / "same-name"
+            root.mkdir()
+            (root / ".membridge-project.json").write_text(
+                '{"key":"custom:team/project","name":"Custom Project"}',
+                encoding="utf-8",
+            )
+            boot = self.svc.bootstrap(project_path=str(root), client="test")
+            self.assertEqual(boot["project"]["key"], "custom:team/project")
+            self.assertEqual(boot["project"]["name"], "Custom Project")
+
     def test_project_isolation(self) -> None:
         project_a = self.svc.ensure_project("project-a")
         project_b = self.svc.ensure_project("project-b")
