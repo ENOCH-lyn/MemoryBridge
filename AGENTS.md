@@ -2,7 +2,9 @@
 
 ## 1. 当前阶段与事实来源
 
-当前处于**立项与文档阶段**，尚未进入实现。先读 [README](README.md) 与 [文档索引](doc/README.md)，再读本次涉及的需求、调研、架构与计划文档。
+当前处于 **MVP 实现阶段**：本地 stdio MCP + SQLite 已可运行；跨设备同步、自动抽取、远程鉴权尚未完成。先读 [README](README.md) 与 [文档索引](doc/README.md)，再读本次涉及的需求、调研、架构、设计与计划文档。
+
+代码在 `membridge/`，测试在 `tests/`；运行 `python -X utf8 -m unittest discover -s tests -v`。不要在 `tmp/` 或仓库根目录提交 `*.db`。
 
 事实优先级：
 

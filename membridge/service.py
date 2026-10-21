@@ -1,0 +1,813 @@
+"""Core MemoryBridge service: identity, bootstrap, memory, docs and skills."""
+
+from __future__ import annotations
+
+import hashlib
+import math
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable
+
+from .db import (
+    connect,
+    init_db,
+    json_dumps,
+    json_loads,
+    new_id,
+    utcnow,
+)
+
+
+MEMORY_TYPES = {"fact", "preference", "decision", "lesson", "procedure", "reference"}
+TYPE_PRIOR = {
+    "decision": 1.0,
+    "lesson": 0.98,
+    "preference": 0.92,
+    "procedure": 0.92,
+    "fact": 0.82,
+    "reference": 0.72,
+}
+
+_WORD_RE = re.compile(r"[a-zA-Z0-9_./+#@-]+")
+_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]+")
+
+
+class GateError(Exception):
+    """Raised when a tool is called without a valid bootstrap context."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+def tokenize(text: str) -> list[str]:
+    """Tokenize English words and CJK bigrams.
+
+    FTS5's default tokenizer does not segment Chinese well, and the MVP dataset
+    is small enough for Python scoring.  English words and CJK bigrams cover the
+    common cases without an embedding dependency.
+    """
+    lower = (text or "").lower()
+    words = [w for w in _WORD_RE.findall(lower) if len(w) >= 2 or w.isdigit()]
+    grams: list[str] = []
+    for run in _CJK_RE.findall(lower):
+        if len(run) == 1:
+            grams.append(run)
+        else:
+            grams.extend(run[i : i + 2] for i in range(len(run) - 1))
+    return list(dict.fromkeys(words + grams))
+
+
+def _snippet(text: str, terms: Iterable[str], width: int = 100) -> str:
+    lower = text.lower()
+    pos = -1
+    for term in terms:
+        pos = lower.find(term)
+        if pos >= 0:
+            break
+    if pos < 0:
+        pos = 0
+    start = max(0, pos - width // 3)
+    end = min(len(text), start + width)
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(text) else ""
+    return prefix + text[start:end].replace("\n", " ") + suffix
+
+
+def _recency(updated_at: str) -> float:
+    try:
+        then = datetime.strptime(updated_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return 0.5
+    days = max(0.0, (datetime.now(timezone.utc) - then).total_seconds() / 86400.0)
+    return math.exp(-days / 180.0)
+
+
+def _score(
+    query: str,
+    text: str,
+    *,
+    confidence: float = 0.8,
+    updated_at: str = "",
+    item_type: str = "fact",
+) -> float:
+    q = (query or "").strip().lower()
+    if not q:
+        return 0.0
+    terms = tokenize(q)
+    if not terms:
+        return 0.0
+    haystack = (text or "").lower()
+    hits = sum(1 for term in terms if term in haystack)
+    if hits == 0:
+        return 0.0
+    coverage = hits / len(terms)
+    exact = 1.0 if q in haystack else 0.0
+    prior = TYPE_PRIOR.get(item_type, 0.8)
+    return (
+        0.55 * coverage
+        + 0.15 * exact
+        + 0.10 * max(0.0, min(1.0, float(confidence)))
+        + 0.10 * _recency(updated_at)
+        + 0.10 * prior
+    )
+
+
+class AgentSyncService:
+    def __init__(self, db_path: str | Path):
+        self.db_path = str(db_path)
+        self.conn = connect(db_path)
+        init_db(self.conn)
+
+    def close(self) -> None:
+        self.conn.close()
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _dict(row: Any) -> dict[str, Any] | None:
+        return dict(row) if row is not None else None
+
+    def _audit(self, action: str, entity: str | None = None, detail: dict | None = None, actor: str = "system") -> None:
+        self.conn.execute(
+            "INSERT INTO audit_log(at, actor, action, entity, detail_json) VALUES (?, ?, ?, ?, ?)",
+            (utcnow(), actor, action, entity, json_dumps(detail or {})),
+        )
+
+    def _meta(self, key: str, default: str | None = None) -> str | None:
+        row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def _set_meta(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO meta(key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+    # ------------------------------------------------------------------
+    # identity / directives
+    # ------------------------------------------------------------------
+    def get_identity(self) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM identity WHERE id = 1").fetchone()
+        if row is None:
+            raise RuntimeError("identity row missing; database was not initialized")
+        return {
+            "name": row["name"],
+            "persona": row["persona"],
+            "style": json_loads(row["style_json"], {}),
+            "boundaries": json_loads(row["boundaries_json"], []),
+            "version": row["version"],
+            "updated_at": row["updated_at"],
+        }
+
+    def set_identity(
+        self,
+        *,
+        name: str | None = None,
+        persona: str | None = None,
+        tone: str | None = None,
+        suffix: str | None = None,
+        address: str | None = None,
+        language: str | None = None,
+        boundaries: list[str] | None = None,
+    ) -> dict[str, Any]:
+        current = self.get_identity()
+        style = dict(current["style"])
+        if tone is not None:
+            style["tone"] = tone
+        if suffix is not None:
+            style["sentence_end"] = suffix
+        if address is not None:
+            style["address_user"] = address
+        if language is not None:
+            style["language"] = language
+        new_boundaries = list(boundaries) if boundaries is not None else current["boundaries"]
+        self.conn.execute(
+            "UPDATE identity SET name = ?, persona = ?, style_json = ?, boundaries_json = ?, "
+            "version = version + 1, updated_at = ? WHERE id = 1",
+            (
+                name if name is not None else current["name"],
+                persona if persona is not None else current["persona"],
+                json_dumps(style),
+                json_dumps(new_boundaries),
+                utcnow(),
+            ),
+        )
+        self._audit("identity.update", "identity", {"name": name, "persona": persona})
+        self.conn.commit()
+        return self.get_identity()
+
+    def add_directive(
+        self,
+        content: str,
+        *,
+        scope: str = "global",
+        project_path: str | None = None,
+        priority: int = 50,
+    ) -> dict[str, Any]:
+        if scope not in {"global", "project"}:
+            raise ValueError("scope must be global or project")
+        project_id = None
+        if scope == "project":
+            if not project_path:
+                raise ValueError("project scope requires project_path")
+            project_id = self.ensure_project(project_path)["id"]
+        directive_id = new_id("dir")
+        self.conn.execute(
+            "INSERT INTO directives(id, scope, project_id, content, priority, active, created_at) "
+            "VALUES (?, ?, ?, ?, ?, 1, ?)",
+            (directive_id, scope, project_id, content.strip(), priority, utcnow()),
+        )
+        self._audit("directive.add", directive_id, {"scope": scope, "project_id": project_id})
+        self.conn.commit()
+        return {"directive_id": directive_id, "scope": scope, "project_id": project_id}
+
+    def list_directives(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT * FROM directives WHERE active = 1 AND "
+            "(scope = 'global' OR (scope = 'project' AND project_id = ?)) "
+            "ORDER BY priority DESC, created_at ASC",
+            (project_id,),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "scope": r["scope"],
+                "project_id": r["project_id"],
+                "content": r["content"],
+                "priority": r["priority"],
+            }
+            for r in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # projects
+    # ------------------------------------------------------------------
+    def ensure_project(
+        self,
+        project_path: str,
+        *,
+        name: str | None = None,
+        conventions: list[str] | None = None,
+    ) -> dict[str, Any]:
+        raw = (project_path or "").strip()
+        if not raw:
+            raise ValueError("project_path is required")
+        path_obj = Path(raw).expanduser()
+        try:
+            normalized = str(path_obj.resolve()) if path_obj.exists() or "/" in raw or "\\" in raw else raw
+        except OSError:
+            normalized = raw
+        project_id = "proj_" + hashlib.sha1(normalized.lower().encode("utf-8")).hexdigest()[:12]
+        row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        now = utcnow()
+        if row is None:
+            project_name = name or Path(normalized).name or normalized
+            self.conn.execute(
+                "INSERT INTO projects(id, name, path, conventions_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (project_id, project_name, normalized, json_dumps(conventions or []), now, now),
+            )
+            self._audit("project.create", project_id, {"path": normalized, "name": project_name})
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        elif conventions is not None or name is not None:
+            self.conn.execute(
+                "UPDATE projects SET name = ?, conventions_json = ?, updated_at = ? WHERE id = ?",
+                (
+                    name or row["name"],
+                    json_dumps(conventions if conventions is not None else json_loads(row["conventions_json"], [])),
+                    now,
+                    project_id,
+                ),
+            )
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return self._project_dict(row)
+
+    @staticmethod
+    def _project_dict(row: Any) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "path": row["path"],
+            "conventions": json_loads(row["conventions_json"], []),
+        }
+
+    def get_project(self, project_id: str | None) -> dict[str, Any] | None:
+        if not project_id:
+            return None
+        row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return self._project_dict(row) if row else None
+
+    # ------------------------------------------------------------------
+    # bootstrap / context gate
+    # ------------------------------------------------------------------
+    def _context_payload(
+        self,
+        identity: dict[str, Any],
+        directives: list[dict[str, Any]],
+        project: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        return {
+            "identity_version": identity["version"],
+            "identity_name": identity["name"],
+            "directives": [(d["id"], d["content"], d["priority"]) for d in directives],
+            "project_id": project["id"] if project else None,
+            "conventions": project["conventions"] if project else [],
+        }
+
+    def _context_version(self, payload: dict[str, Any]) -> str:
+        raw = json_dumps(payload).encode("utf-8")
+        return "ctx_" + hashlib.sha256(raw).hexdigest()[:24]
+
+    def bootstrap(
+        self,
+        *,
+        project_path: str | None = None,
+        agent_id: str | None = None,
+        client: str = "unknown",
+    ) -> dict[str, Any]:
+        project = self.ensure_project(project_path) if project_path else None
+        identity = self.get_identity()
+        directives = self.list_directives(project["id"] if project else None)
+        context_version = self._context_version(self._context_payload(identity, directives, project))
+        now = utcnow()
+        expires = datetime.now(timezone.utc).replace(microsecond=0)
+        expires = expires.timestamp() + 24 * 3600
+        expires_at = datetime.fromtimestamp(expires, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        resolved_agent = agent_id or self._meta("agent_id", "agent_default") or "agent_default"
+        if agent_id:
+            self._set_meta("agent_id", resolved_agent)
+        self.conn.execute(
+            "INSERT OR REPLACE INTO sessions(context_version, agent_id, project_id, identity_version, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                context_version,
+                resolved_agent,
+                project["id"] if project else None,
+                identity["version"],
+                now,
+                expires_at,
+            ),
+        )
+        self._audit("bootstrap", context_version, {"agent_id": resolved_agent, "client": client, "project_id": project["id"] if project else None})
+        self.conn.commit()
+
+        project_id = project["id"] if project else None
+        recent = self._recent_items(project_id)
+        available = {
+            "memories": self._count("memories", project_id),
+            "documents": self._count("documents", project_id),
+            "skills": self._count("skills", project_id),
+        }
+        return {
+            "agent_id": resolved_agent,
+            "client": client,
+            "identity": identity,
+            "global_directives": [d["content"] for d in directives if d["scope"] == "global"],
+            "project_directives": [d["content"] for d in directives if d["scope"] == "project"],
+            "project": project,
+            "recent_decisions": recent["decisions"],
+            "recent_lessons": recent["lessons"],
+            "available": available,
+            "context_version": context_version,
+            "next_actions": [
+                "Use memory_search for facts, decisions and lessons",
+                "Use doc_search / doc_read for project documents",
+                "Use skill_search / skill_get for reusable procedures",
+            ],
+        }
+
+    def _count(self, table: str, project_id: str | None) -> int:
+        if project_id:
+            row = self.conn.execute(
+                f"SELECT COUNT(*) AS n FROM {table} WHERE project_id = ? OR project_id IS NULL",
+                (project_id,),
+            ).fetchone()
+        else:
+            row = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table} WHERE project_id IS NULL").fetchone()
+        return int(row["n"]) if row else 0
+
+    def _recent_items(self, project_id: str | None) -> dict[str, list[dict[str, Any]]]:
+        result: dict[str, list[dict[str, Any]]] = {"decisions": [], "lessons": []}
+        for item_type, key in (("decision", "decisions"), ("lesson", "lessons")):
+            if project_id:
+                rows = self.conn.execute(
+                    "SELECT * FROM memories WHERE status = 'active' AND type = ? "
+                    "AND (project_id = ? OR project_id IS NULL) ORDER BY updated_at DESC LIMIT 5",
+                    (item_type, project_id),
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    "SELECT * FROM memories WHERE status = 'active' AND type = ? "
+                    "AND project_id IS NULL ORDER BY updated_at DESC LIMIT 5",
+                    (item_type,),
+                ).fetchall()
+            result[key] = [self._memory_dict(r) for r in rows]
+        return result
+
+    def validate_context(self, context_version: str | None) -> dict[str, Any]:
+        if not context_version:
+            raise GateError("BOOTSTRAP_REQUIRED", "Call agent_bootstrap first in this conversation.")
+        row = self.conn.execute(
+            "SELECT * FROM sessions WHERE context_version = ?", (context_version,)
+        ).fetchone()
+        if row is None:
+            raise GateError(
+                "BOOTSTRAP_REQUIRED",
+                "Unknown context_version. Call agent_bootstrap first in this conversation.",
+            )
+        if row["expires_at"] <= utcnow():
+            raise GateError("CONTEXT_STALE", "Bootstrap session expired. Call agent_bootstrap again.")
+        project = self.get_project(row["project_id"])
+        identity = self.get_identity()
+        directives = self.list_directives(project["id"] if project else None)
+        current = self._context_version(self._context_payload(identity, directives, project))
+        if current != context_version:
+            raise GateError(
+                "CONTEXT_STALE",
+                "Identity or project context changed. Call agent_bootstrap again to refresh.",
+            )
+        return {
+            "context_version": context_version,
+            "agent_id": row["agent_id"],
+            "project_id": row["project_id"],
+        }
+
+    # ------------------------------------------------------------------
+    # memory
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _memory_dict(row: Any) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "type": row["type"],
+            "content": row["content"],
+            "confidence": row["confidence"],
+            "source": row["source"],
+            "status": row["status"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def memory_add(
+        self,
+        context_version: str,
+        content: str,
+        *,
+        type: str = "fact",
+        project_id: str | None = None,
+        confidence: float = 0.8,
+        source: str = "agent",
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        if type not in MEMORY_TYPES:
+            raise ValueError(f"type must be one of {sorted(MEMORY_TYPES)}")
+        target_project = project_id if project_id is not None else session["project_id"]
+        if target_project == "global":
+            target_project = None
+        if target_project and self.get_project(target_project) is None:
+            raise ValueError(f"unknown project_id: {target_project}")
+        memory_id = new_id("mem")
+        now = utcnow()
+        self.conn.execute(
+            "INSERT INTO memories(id, project_id, type, content, confidence, source, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)",
+            (memory_id, target_project, type, content.strip(), float(confidence), source, now, now),
+        )
+        self._audit("memory.add", memory_id, {"project_id": target_project, "type": type})
+        self.conn.commit()
+        return {"memory_id": memory_id, "project_id": target_project, "type": type, "status": "active"}
+
+    def memory_search(
+        self,
+        context_version: str,
+        query: str,
+        *,
+        project_id: str | None = None,
+        scope: str = "auto",
+        k: int = 8,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        selected = project_id if project_id is not None else session["project_id"]
+        if scope not in {"auto", "project", "global"}:
+            raise ValueError("scope must be auto, project or global")
+        if scope == "global":
+            allowed = {None}
+        elif scope == "project":
+            allowed = {selected} if selected else {None}
+        else:
+            allowed = {selected, None} if selected else {None}
+
+        rows = self.conn.execute(
+            "SELECT * FROM memories WHERE status = 'active' ORDER BY updated_at DESC"
+        ).fetchall()
+        scored: list[tuple[float, Any]] = []
+        for row in rows:
+            if row["project_id"] not in allowed:
+                continue
+            score = _score(
+                query,
+                row["content"],
+                confidence=row["confidence"],
+                updated_at=row["updated_at"],
+                item_type=row["type"],
+            )
+            if score > 0:
+                scored.append((score, row))
+        scored.sort(key=lambda x: (x[0], x[1]["updated_at"]), reverse=True)
+        terms = tokenize(query)
+        items = []
+        for score, row in scored[: max(1, min(int(k), 50))]:
+            item = self._memory_dict(row)
+            item["score"] = round(score, 3)
+            item["snippet"] = _snippet(row["content"], terms)
+            item["citation"] = f"[mem:{row['id']}]"
+            items.append(item)
+        return {"query": query, "scope": scope, "project_id": selected, "items": items, "count": len(items)}
+
+    def memory_list(
+        self,
+        context_version: str,
+        *,
+        project_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        selected = project_id if project_id is not None else session["project_id"]
+        if selected:
+            rows = self.conn.execute(
+                "SELECT * FROM memories WHERE status = 'active' AND (project_id = ? OR project_id IS NULL) "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (selected, max(1, min(limit, 200))),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM memories WHERE status = 'active' AND project_id IS NULL "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (max(1, min(limit, 200)),),
+            ).fetchall()
+        return {"items": [self._memory_dict(r) for r in rows]}
+
+    def memory_feedback(
+        self,
+        context_version: str,
+        memory_id: str,
+        signal: str = "helpful",
+    ) -> dict[str, Any]:
+        self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown memory_id: {memory_id}")
+        if signal not in {"helpful", "harmful", "used"}:
+            raise ValueError("signal must be helpful, harmful or used")
+        delta = {"helpful": 0.02, "harmful": -0.05, "used": 0.0}[signal]
+        confidence = max(0.1, min(1.0, float(row["confidence"]) + delta))
+        self.conn.execute(
+            "UPDATE memories SET uses = uses + 1, helpful = helpful + ?, confidence = ?, updated_at = ? WHERE id = ?",
+            (1 if signal == "helpful" else 0, confidence, utcnow(), memory_id),
+        )
+        self._audit("memory.feedback", memory_id, {"signal": signal})
+        self.conn.commit()
+        return {"memory_id": memory_id, "signal": signal, "confidence": round(confidence, 3)}
+
+    # ------------------------------------------------------------------
+    # documents
+    # ------------------------------------------------------------------
+    def doc_add(
+        self,
+        context_version: str,
+        *,
+        path: str,
+        content: str,
+        title: str | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        target = project_id if project_id is not None else session["project_id"]
+        if target == "global":
+            target = None
+        existing = self.conn.execute(
+            "SELECT * FROM documents WHERE path = ? AND project_id IS ?",
+            (path, target),
+        ).fetchone()
+        now = utcnow()
+        doc_title = title or Path(path).stem
+        if existing:
+            self.conn.execute(
+                "UPDATE documents SET title = ?, content = ?, updated_at = ? WHERE id = ?",
+                (doc_title, content, now, existing["id"]),
+            )
+            doc_id = existing["id"]
+            action = "doc.update"
+        else:
+            doc_id = new_id("doc")
+            self.conn.execute(
+                "INSERT INTO documents(id, project_id, path, title, content, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (doc_id, target, path, doc_title, content, now),
+            )
+            action = "doc.add"
+        self._audit(action, doc_id, {"path": path, "project_id": target})
+        self.conn.commit()
+        return {"document_id": doc_id, "path": path, "title": doc_title, "project_id": target}
+
+    def doc_search(
+        self,
+        context_version: str,
+        query: str,
+        *,
+        project_id: str | None = None,
+        k: int = 5,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        selected = project_id if project_id is not None else session["project_id"]
+        rows = self.conn.execute("SELECT * FROM documents ORDER BY updated_at DESC").fetchall()
+        scored: list[tuple[float, Any]] = []
+        for row in rows:
+            if selected and row["project_id"] not in {selected, None}:
+                continue
+            if not selected and row["project_id"] is not None:
+                continue
+            text = f"{row['title']}\n{row['content']}"
+            score = _score(query, text, updated_at=row["updated_at"], item_type="reference")
+            if score > 0:
+                scored.append((score, row))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        terms = tokenize(query)
+        items = []
+        for score, row in scored[: max(1, min(int(k), 20))]:
+            items.append(
+                {
+                    "document_id": row["id"],
+                    "title": row["title"],
+                    "path": row["path"],
+                    "project_id": row["project_id"],
+                    "score": round(score, 3),
+                    "snippet": _snippet(row["content"], terms),
+                    "citation": f"[doc:{row['id']}]",
+                }
+            )
+        return {"query": query, "items": items, "count": len(items)}
+
+    def doc_read(self, context_version: str, document_id: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+        if row is None:
+            row = self.conn.execute("SELECT * FROM documents WHERE path = ?", (document_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown document: {document_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("document is outside the current project scope")
+        return {
+            "document_id": row["id"],
+            "title": row["title"],
+            "path": row["path"],
+            "project_id": row["project_id"],
+            "content": row["content"],
+        }
+
+    # ------------------------------------------------------------------
+    # skills
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _skill_dict(row: Any) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "name": row["name"],
+            "trigger": row["trigger"],
+            "steps": json_loads(row["steps_json"], []),
+            "status": row["status"],
+            "success_count": row["success_count"],
+            "failure_count": row["failure_count"],
+        }
+
+    def skill_add(
+        self,
+        context_version: str,
+        *,
+        name: str,
+        trigger: str,
+        steps: list[str],
+        project_id: str | None = None,
+        status: str = "candidate",
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        target = project_id if project_id is not None else session["project_id"]
+        if target == "global":
+            target = None
+        skill_id = new_id("skill")
+        now = utcnow()
+        self.conn.execute(
+            "INSERT INTO skills(id, project_id, name, trigger, steps_json, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (skill_id, target, name, trigger, json_dumps(steps), status, now, now),
+        )
+        self._audit("skill.add", skill_id, {"project_id": target, "name": name})
+        self.conn.commit()
+        return {"skill_id": skill_id, "project_id": target, "status": status}
+
+    def skill_list(
+        self,
+        context_version: str,
+        *,
+        project_id: str | None = None,
+        query: str | None = None,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        selected = project_id if project_id is not None else session["project_id"]
+        rows = self.conn.execute("SELECT * FROM skills ORDER BY updated_at DESC").fetchall()
+        items = []
+        for row in rows:
+            if selected and row["project_id"] not in {selected, None}:
+                continue
+            if not selected and row["project_id"] is not None:
+                continue
+            if query:
+                text = f"{row['name']}\n{row['trigger']}\n{' '.join(json_loads(row['steps_json'], []))}"
+                if _score(query, text, updated_at=row["updated_at"], item_type="procedure") <= 0:
+                    continue
+            items.append(self._skill_dict(row))
+        return {"items": items, "count": len(items)}
+
+    def skill_get(self, context_version: str, skill_id: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown skill: {skill_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("skill is outside the current project scope")
+        return self._skill_dict(row)
+
+    # ------------------------------------------------------------------
+    # project context / status / export
+    # ------------------------------------------------------------------
+    def project_context(self, context_version: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        project = self.get_project(session["project_id"])
+        if project is None:
+            return {"project": None, "directives": [], "decisions": [], "lessons": []}
+        recent = self._recent_items(project["id"])
+        return {
+            "project": project,
+            "directives": [d["content"] for d in self.list_directives(project["id"])],
+            "decisions": recent["decisions"],
+            "lessons": recent["lessons"],
+        }
+
+    def status(self) -> dict[str, Any]:
+        counts = {}
+        for table in ("projects", "memories", "documents", "skills", "directives", "sessions"):
+            row = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
+            counts[table] = int(row["n"])
+        return {
+            "db": self.db_path,
+            "identity": self.get_identity(),
+            "counts": counts,
+            "seed": self._meta("seed", "0") == "1",
+        }
+
+    def export_data(self) -> dict[str, Any]:
+        data: dict[str, Any] = {"format": "membridge-export-v1", "exported_at": utcnow()}
+        for table in ("identity", "projects", "directives", "memories", "documents", "skills"):
+            data[table] = [dict(r) for r in self.conn.execute(f"SELECT * FROM {table}").fetchall()]
+        return data
+
+    def import_data(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get("format") != "membridge-export-v1":
+            raise ValueError("unsupported import format")
+        imported = 0
+        identity_rows = payload.get("identity") or []
+        if identity_rows:
+            row = identity_rows[0]
+            self.conn.execute(
+                "UPDATE identity SET name = ?, persona = ?, style_json = ?, boundaries_json = ?, "
+                "version = ?, updated_at = ? WHERE id = 1",
+                (
+                    row.get("name", "默认"),
+                    row.get("persona", ""),
+                    row.get("style_json", "{}"),
+                    row.get("boundaries_json", "[]"),
+                    int(row.get("version", 1)),
+                    row.get("updated_at", utcnow()),
+                ),
+            )
+            imported += 1
+        for table in ("projects", "directives", "memories", "documents", "skills"):
+            rows = payload.get(table, [])
+            if not rows:
+                continue
+            columns = list(rows[0].keys())
+            placeholders = ",".join("?" for _ in columns)
+            sql = f"INSERT OR IGNORE INTO {table}({','.join(columns)}) VALUES ({placeholders})"
+            for row in rows:
+                self.conn.execute(sql, [row.get(c) for c in columns])
+                imported += 1
+        self._audit("import", None, {"imported": imported})
+        self.conn.commit()
+        return {"imported": imported}

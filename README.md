@@ -1,77 +1,166 @@
 # 忆桥 MemoryBridge
 
-忆桥是面向个人开发者 / 小团队的自部署 AI 记忆与文档中枢。它把不同电脑、不同 agent、不同项目的经历汇聚成一份**有出处、会过期、可冲突合并、能沉淀经验**的记忆，让换机、换项目不必重新调教。
+忆桥是一个**自部署的 Agent 身份 / 记忆 / 能力同步器**：任何支持 MCP 的客户端，只要连上同一个 MemoryBridge，agent 在每次新会话先 `agent_bootstrap`，就能拿回同一份人格、全局指令、项目上下文、记忆、文档和技能。
 
-> 当前阶段：**立项与文档**。仓库暂不含可运行代码；先对齐问题、边界、架构与评测，再进入实现。
+> **当前状态：可运行 MVP（本地 stdio + SQLite）**。
+> 已实现 Identity / Bootstrap Gate / 记忆 / 文档 / 技能 / CLI / 测试；跨设备实时同步、自动抽取、向量检索是下一阶段。
 
-## 解决什么问题
+## 现在能做到什么
 
-| 断点 | 现象 |
-|---|---|
-| 设备 | 公司台式机 / 家里笔记本 / 服务器各一份记忆，换机即失忆 |
-| 工具 | `CLAUDE.md`、`AGENTS.md`、Cursor rules、ChatGPT memory 互不相通 |
-| 项目 | 项目 A 的决策与踩坑，项目 B 不会自动知道 |
-| 文档 | ADR / SOP / 笔记散落，agent 检索不到或检索到过期版本 |
+- **同一个 agent**：新会话调用 `agent_bootstrap`，返回人格、称呼、语气、边界、全局指令、项目约定和 `context_version`。
+- **Bootstrap Gate**：没 bootstrap 就调记忆/文档/技能工具，返回 `BOOTSTRAP_REQUIRED`；身份或项目上下文变了，旧 context 返回 `CONTEXT_STALE`。
+- **项目隔离**：按项目路径自动建 project；默认检索“当前项目 + 全局”，不会把 A 项目私有记忆串到 B 项目。
+- **记忆**：事实 / 偏好 / 决策 / 教训 / 流程 / 文档引用；中文双字 + 英文词检索；反馈会调整置信度。
+- **文档**：Markdown/ADR 作为一等记忆，支持写入、搜索、按 id 读取。
+- **技能**：可复用流程的候选/已验证状态，支持触发条件与步骤。
+- **零外部依赖**：Python 3.11+ 标准库 + SQLite；单文件数据库，可拷贝、可导出。
+- **MCP 协议**：`initialize` 带 `instructions`；工具带描述与 annotations；另有 `memory://identity` 资源和 `recall_for_task` prompt。
 
-现有方案各有强项：Mem0 的抽取流水线、MemOS 的记忆分层、Letta 的有状态 agent、Graphiti 的时序知识图谱、basic-memory 的 Markdown + MCP、ByteRover 的版本化上下文。但“自部署 + 跨设备同步 + 治理 + 经验晋升 + 文档一体”仍缺少开箱即用的组合，这就是忆桥的切入点。
+## 60 秒跑起来
 
-## 产品范围
-
-- **自部署优先**：Docker Compose 单机可跑，数据可带走，无强制云依赖。
-- **跨设备一等公民**：离线可写、增量同步、冲突可解释。
-- **跨 agent 接入**：MCP 优先，CLI / Hook 补充；不绑定单一 agent。
-- **治理优先**：来源、置信度、时效、敏感级、信任级、审计；记忆可编辑、可删除。
-- **经验闭环**：任务轨迹 → 候选经验 → 验证 → 晋升为跨项目 Skill → 退役。
-- **文档即记忆**：Markdown + Git，文档既给人看，也能被 agent 引用到章节。
-
-**当前非目标**：多租户 SaaS、实时协作编辑、端到端加密、移动端 App、模型微调。这些不砍，课程周期内做不完。
-
-## 文档入口
-
-1. [产品需求文档](doc/需求/MemoryBridge-产品需求文档.md)：定位、用户、功能需求、非功能、数据模型、API/MCP、同步、安全、评测与实施计划。
-2. [调研与可行性](doc/调研/MemoryBridge-调研与可行性.md)：竞品矩阵、学术脉络、可行性评分、Go/No-Go 门槛。
-3. [开源复用调研](doc/调研/MemoryBridge-开源复用调研.md)：开源项目评估、MCP 协议约束、复用矩阵、三条实现路线与 spike 计划。
-4. [架构概览](doc/架构/MemoryBridge-架构概览.md)：组件、数据流、部署与待定项。
-5. [ADR 架构决策](doc/架构/MemoryBridge-ADR架构决策文档.md)：17 条决策的背景、备选、代价、验证与复审条件。
-6. [12 周实施计划](doc/计划/MemoryBridge-12周实施计划.md)：里程碑、门槛、分工与预算。
-7. [文档索引](doc/README.md)：全部文档与后续拆分计划。
-8. [AI 协作规范](AGENTS.md)：事实来源、文档职责、Git 与验证约束。
-
-## 仓库结构
-
-```text
-.
-├─ README.md
-├─ AGENTS.md
-├─ doc/
-│  ├─ README.md
-│  ├─ 需求/MemoryBridge-产品需求文档.md
-│  ├─ 调研/MemoryBridge-调研与可行性.md
-│  ├─ 架构/MemoryBridge-架构概览.md
-│  ├─ 架构/MemoryBridge-ADR架构决策文档.md
-│  └─ 计划/MemoryBridge-12周实施计划.md
-└─ .gitignore
+```powershell
+cd C:\path\to\MemoryBridge
+python -m membridge --db .\membridge.db seed
+python -m membridge --db .\membridge.db bootstrap --project-path demo
 ```
 
-后续实现阶段预计增加 `server/`、`web/`、`mcp/`、`deploy/`、`bench/`，以实际 ADR 为准。
+会看到类似：
 
-## 当前状态
+```json
+{
+  "identity": {"name": "默认", "persona": "可靠、直接、先给结论……", "version": 2},
+  "project": {"id": "proj_...", "name": "Demo 项目", "conventions": ["Python 3.13 + 标准库", "..."]},
+  "global_directives": ["先给结论，再给细节。", "..."],
+  "context_version": "ctx_..."
+}
+```
 
-- [x] 问题定义与竞品调研
-- [x] 可行性判断与 Go/No-Go 门槛
-- [x] PRD v1.0
-- [x] 架构概览与 12 周计划
-- [x] ADR 架构决策文档（17 条）
-- [x] 开源复用调研（10 个项目 + 3 条路线）
-- [ ] 技术选型验证（MCP + Postgres/pgvector 最小闭环）
-- [ ] 记忆抽取与检索原型
-- [ ] 跨设备同步与冲突测试
-- [ ] CrossProjectBench 与实验
+试试猫娘：
 
-## 本地开发
+```powershell
+python -m membridge --db .\membridge.db persona set `
+  --name 猫娘 --persona "你是猫娘，句尾带喵，称呼用户为主人。" `
+  --tone 可爱 --suffix 喵 --address 主人
+python -m membridge --db .\membridge.db bootstrap --project-path demo
+```
 
-暂无可运行代码。文档阶段只需 Markdown 阅读器；后续实现会在此补充环境要求、启动命令与验证方式。
+## 接入 MCP 客户端
+
+先启动服务（stdio，由客户端拉起）：
+
+```powershell
+python -m membridge --db .\membridge.db serve --project .
+```
+
+Claude Code / Cursor / DSH 的 MCP 配置（把路径换成你的实际路径）：
+
+```json
+{
+  "mcpServers": {
+    "membridge": {
+      "command": "python",
+      "args": [
+        "-m", "membridge",
+        "--db", "C:\\path\\to\\MemoryBridge\\membridge.db",
+        "serve",
+        "--project", "C:\\path\\to\\your\\project"
+      ],
+      "env": {
+        "PYTHONPATH": "C:\\path\\to\\MemoryBridge"
+      }
+    }
+  }
+}
+```
+
+如果已经 `pip install -e .`，可以去掉 `PYTHONPATH`，把 `command` 改成 `membridge`。
+
+**第一次对话**：客户端应把 `initialize.instructions` 注入模型；模型会先调 `agent_bootstrap`。如果某个客户端不注入 `instructions`，手动说一句“先调用 agent_bootstrap”即可，Gate 也会在后续工具调用时强制补调。
+
+## CLI
+
+```powershell
+python -m membridge --db .\membridge.db init
+python -m membridge --db .\membridge.db seed
+python -m membridge --db .\membridge.db status
+python -m membridge --db .\membridge.db bootstrap --project-path .
+python -m membridge --db .\membridge.db persona set --name 猫娘 --tone 可爱
+python -m membridge --db .\membridge.db directive add "先给结论" --scope global
+python -m membridge --db .\membridge.db remember "分页用 cursor" --type decision --project-path .
+python -m membridge --db .\membridge.db search "分页" --project-path .
+python -m membridge --db .\membridge.db docs add .\docs\adr.md --project-path .
+python -m membridge --db .\membridge.db docs search "SQLite" --project-path .
+python -m membridge --db .\membridge.db skills list --project-path .
+python -m membridge --db .\membridge.db export --out .\backup.json
+python -m membridge --db .\membridge.db import --in .\backup.json
+```
+
+> `--json` 可放在命令任意位置；数据默认 UTF-8 输出。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| Identity | 人格、称呼、语气、边界、版本；全局唯一，随数据库走 |
+| Directive | 全局或项目级 standing instruction，带优先级 |
+| Project | 按路径哈希生成；保存 name / path / conventions |
+| Memory | `fact / preference / decision / lesson / procedure / reference`，带置信度与来源 |
+| Document | Markdown/ADR，按项目挂载，可被检索与引用 |
+| Skill | 触发条件 + 步骤 + 状态（candidate/validated/global） |
+| context_version | 身份 + 指令 + 项目约定的哈希；变更后旧会话失效 |
+| Bootstrap Gate | 没有有效 context_version，记忆/文档/技能工具一律拒绝 |
+
+## 目录
+
+```text
+membridge/
+├─ db.py          SQLite schema / 连接 / 时间与 JSON 工具
+├─ service.py     Identity、Bootstrap、记忆、文档、技能、导出
+├─ mcp_server.py  MCP stdio JSON-RPC、工具 schema、Gate 错误
+├─ cli.py         命令行
+└─ seed.py        演示数据
+tests/
+├─ test_service.py  服务/门禁/隔离/中文检索/导入导出
+└─ test_mcp.py      MCP initialize / tools / bootstrap / 跨进程 context
+```
+
+## 借用/参考了哪些开源设计
+
+- **Letta MemFS**：root 身份文件 always-on + `MEMORY.md` 索引 + lazy 目录 + Git 版本 → 本项目的 Identity + 项目上下文分层。
+- **mcp-memory-service**：`get_bootstrap_profile` 的 token 预算、avoid rules、user corrections → 本项目的 bootstrap 包结构。
+- **Memobase**：结构化用户画像与“buffer + 少量固定 LLM 调用”的冷路径 → 后续自动抽取的参考。
+- **MemOS**：L1 trace / L2 policy / L3 world model / Skill → 后续技能晋升的参考。
+- **官方 MCP Memory Server**：“每次开始先 Remembering…” → 证明 bootstrap 目前多靠客户端提示词；本项目用 Gate 把它变成服务端约束。
+
+## 当前限制（下一阶段）
+
+- **仅 stdio**：还没有远程 MCP/HTTP 服务；跨设备实时同步未实现。当前可用同一 DB 文件、导出/导入过渡。
+- **没有自动抽取**：记忆目前由 agent/用户显式写入；LLM 抽取、去重、冲突合并未接。
+- **没有向量检索**：中文用双字、英文用词匹配；embedding/rerank 未接。
+- **没有鉴权**：stdio 本地服务；远程部署前必须加 token/OAuth/TLS。
+- **没有冲突/墓碑/op log**：多设备并发写暂不支持；导入是 `INSERT OR IGNORE`。
+- **技能晋升未做审核 UI**：目前 CLI/工具直接写，后续加“候选 → 验证 → 晋升”。
+
+## 测试
+
+```powershell
+python -X utf8 -m unittest discover -s tests -v
+```
+
+当前 12 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、context 失效、猫娘人格、文档/技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context。
+
+## 文档
+
+- [产品需求文档](doc/需求/MemoryBridge-产品需求文档.md)
+- [调研与可行性](doc/调研/MemoryBridge-调研与可行性.md)
+- [开源复用调研](doc/调研/MemoryBridge-开源复用调研.md)
+- [架构概览](doc/架构/MemoryBridge-架构概览.md)
+- [ADR 架构决策](doc/架构/MemoryBridge-ADR架构决策文档.md)
+- [MVP 实现说明](doc/设计/MemoryBridge-MVP实现.md)
+- [12 周实施计划](doc/计划/MemoryBridge-12周实施计划.md)
+- [文档索引](doc/README.md)
+- [AI 协作规范](AGENTS.md)
 
 ## 许可
 
-待定。当前建议 Apache-2.0，需与课程要求确认后写入 `LICENSE`。
+待定；当前建议 Apache-2.0，需与课程要求确认后写入 `LICENSE`。
