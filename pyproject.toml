@@ -17,3 +17,6 @@ mb = "membridge.cli:main"
 
 [tool.setuptools]
 packages = ["membridge"]
+
+[tool.setuptools.package-data]
+membridge = ["webui.html"]

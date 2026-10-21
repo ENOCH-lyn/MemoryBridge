@@ -1,0 +1,19 @@
+services:
+  hub:
+    build: .
+    container_name: membridge-hub
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      MEMBRIDGE_TOKEN: ${MEMBRIDGE_TOKEN:?set MEMBRIDGE_TOKEN in .env or the shell}
+      MEMBRIDGE_DB: /data/membridge.db
+      # Optional: OpenAI-compatible extraction. Leave empty to use the rule extractor.
+      MEMBRIDGE_LLM_BASE_URL: ${MEMBRIDGE_LLM_BASE_URL:-}
+      MEMBRIDGE_LLM_API_KEY: ${MEMBRIDGE_LLM_API_KEY:-}
+      MEMBRIDGE_LLM_MODEL: ${MEMBRIDGE_LLM_MODEL:-}
+    volumes:
+      - membridge-data:/data
+
+volumes:
+  membridge-data:

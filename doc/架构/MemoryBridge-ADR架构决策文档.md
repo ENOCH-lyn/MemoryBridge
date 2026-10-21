@@ -4,7 +4,7 @@
 
 本文记录**已经影响架构、且后续实现必须遵守**的决策。每条包含背景、决策、备选、代价、验证与回滚条件；未验证的选型不写成既成事实。
 
-> **实现状态（2026-10-21）**：MVP 已实现 MCP stdio、Identity/Bootstrap Gate、SQLite 存储、词法检索、Episode + 规则抽取 + 候选审核、文档/技能、HTTP Hub + 本地 proxy。ADR 中的 PostgreSQL/pgvector、op log、字段级冲突合并、embedding/rerank、LLM 抽取、E2EE、Docker 部署仍是**目标决策**，尚未实现；以本文状态与验证门槛为准。
+> **实现状态（2026-10-21）**：MVP 已实现 MCP stdio、Identity/Bootstrap Gate、SQLite 存储、词法检索、Episode + 规则/可选 LLM 抽取 + 候选审核、文档/技能、HTTP Hub + 本地 proxy、Hub 自带 Web UI。ADR 中的 PostgreSQL/pgvector、op log、字段级冲突合并、embedding/rerank、E2EE、生产级 Docker 验证仍是**目标决策**，尚未实现；以本文状态与验证门槛为准。
 
 ## 状态定义
 

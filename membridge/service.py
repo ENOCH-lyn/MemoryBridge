@@ -21,6 +21,7 @@ from .db import (
 )
 from .extract import content_hash as compute_content_hash
 from .extract import extract_candidates as extract_memory_candidates
+from .llm import LLMConfig, extract_with_llm
 
 
 MEMORY_TYPES = {"fact", "preference", "decision", "lesson", "procedure", "reference"}
@@ -119,8 +120,9 @@ def _score(
 
 
 class AgentSyncService:
-    def __init__(self, db_path: str | Path):
+    def __init__(self, db_path: str | Path, llm_config: LLMConfig | None = None):
         self.db_path = str(db_path)
+        self.llm_config = llm_config or LLMConfig.from_env()
         self.conn = connect(db_path)
         init_db(self.conn)
 
@@ -181,6 +183,10 @@ class AgentSyncService:
         language: str | None = None,
         boundaries: list[str] | None = None,
     ) -> dict[str, Any]:
+        if name is not None and not name.strip():
+            raise ValueError("name cannot be empty")
+        if persona is not None and not persona.strip():
+            raise ValueError("persona cannot be empty")
         current = self.get_identity()
         style = dict(current["style"])
         if tone is not None:
@@ -754,6 +760,7 @@ class AgentSyncService:
         agent_id: str | None = None,
         project_id: str | None = None,
         auto_activate: bool = False,
+        use_llm: bool | None = None,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
         target = project_id if project_id is not None else session["project_id"]
@@ -765,7 +772,19 @@ class AgentSyncService:
             agent_id=agent_id or session["agent_id"],
             project_id=target,
         )
-        candidates = extract_memory_candidates(text)
+        extractor = "rules"
+        llm_error: str | None = None
+        candidates: list[dict[str, Any]] = []
+        if use_llm is not False and self.llm_config.enabled:
+            try:
+                candidates = extract_with_llm(text, self.llm_config)
+                extractor = "llm"
+            except Exception as exc:  # fall back to deterministic extraction
+                llm_error = f"{type(exc).__name__}: {exc}"[:500]
+        if not candidates:
+            candidates = extract_memory_candidates(text)
+            if extractor == "llm":
+                extractor = "rules"
         created: list[dict[str, Any]] = []
         duplicates: list[dict[str, Any]] = []
         now = utcnow()
@@ -820,6 +839,8 @@ class AgentSyncService:
         return {
             "episode_id": episode_id,
             "project_id": target,
+            "extractor": extractor,
+            "llm_error": llm_error,
             "candidates": created,
             "duplicates": duplicates,
             "counts": {"created": len(created), "duplicates": len(duplicates)},
@@ -992,6 +1013,41 @@ class AgentSyncService:
             )
         return {"query": query, "items": items, "count": len(items)}
 
+    def doc_list(
+        self,
+        context_version: str,
+        *,
+        project_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        selected = project_id if project_id is not None else session["project_id"]
+        if selected:
+            rows = self.conn.execute(
+                "SELECT * FROM documents WHERE project_id = ? OR project_id IS NULL "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (selected, max(1, min(limit, 200))),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM documents WHERE project_id IS NULL ORDER BY updated_at DESC LIMIT ?",
+                (max(1, min(limit, 200)),),
+            ).fetchall()
+        items = []
+        for row in rows:
+            preview = (row["content"] or "").replace("\n", " ")[:160]
+            items.append(
+                {
+                    "document_id": row["id"],
+                    "title": row["title"],
+                    "path": row["path"],
+                    "project_id": row["project_id"],
+                    "updated_at": row["updated_at"],
+                    "preview": preview,
+                }
+            )
+        return {"items": items, "count": len(items)}
+
     def doc_read(self, context_version: str, document_id: str) -> dict[str, Any]:
         session = self.validate_context(context_version)
         row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
@@ -1103,10 +1159,14 @@ class AgentSyncService:
         for table in ("projects", "memories", "documents", "skills", "directives", "episodes", "sessions"):
             row = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
             counts[table] = int(row["n"])
+        for status in ("active", "candidate", "rejected", "deleted"):
+            row = self.conn.execute("SELECT COUNT(*) AS n FROM memories WHERE status = ?", (status,)).fetchone()
+            counts[f"memories_{status}"] = int(row["n"])
         return {
             "db": self.db_path,
             "identity": self.get_identity(),
             "counts": counts,
+            "llm": self.llm_config.public(),
             "seed": self._meta("seed", "0") == "1",
         }
 

@@ -133,6 +133,7 @@ TOOLS: list[dict[str, Any]] = [
                 "source": {"type": "string"},
                 "project_id": {"type": "string"},
                 "auto_activate": {"type": "boolean", "description": "Activate high-confidence candidates immediately."},
+                "use_llm": {"type": "boolean", "description": "Use the configured LLM extractor when available."},
                 "agent_id": {"type": "string"},
             },
             ["context_version", "text"],
@@ -203,6 +204,16 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": _schema(
             {"context_version": CTX, "query": {"type": "string"}, "project_id": {"type": "string"}, "k": {"type": "integer", "minimum": 1, "maximum": 20}},
             ["context_version", "query"],
+        ),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "doc_list",
+        "title": "List documents",
+        "description": "List documents attached to the current project and global scope. Requires bootstrap.",
+        "inputSchema": _schema(
+            {"context_version": CTX, "project_id": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}},
+            ["context_version"],
         ),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
     },
@@ -346,6 +357,7 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 agent_id=args.get("agent_id"),
                 project_id=args.get("project_id"),
                 auto_activate=bool(args.get("auto_activate", False)),
+                use_llm=args.get("use_llm"),
             )
         )
     if name == "memory_candidates":
@@ -372,6 +384,14 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 args["query"],
                 project_id=args.get("project_id"),
                 k=int(args.get("k", 5)),
+            )
+        )
+    if name == "doc_list":
+        return _ok(
+            service.doc_list(
+                ctx,
+                project_id=args.get("project_id"),
+                limit=int(args.get("limit", 100)),
             )
         )
     if name == "doc_read":

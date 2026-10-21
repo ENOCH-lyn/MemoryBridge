@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>忆桥 MemoryBridge</title>
+<style>
+:root{
+  --bg:#0b0f16; --panel:#111825; --panel2:#162033; --line:#243149;
+  --text:#e8eef8; --muted:#8fa1bd; --accent:#7c9cff; --accent2:#5ce1b1;
+  --warn:#ffcf6b; --danger:#ff7a8a; --ok:#5ce1b1; --radius:14px;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);
+  font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+.sidebar{background:linear-gradient(180deg,#0e1624,#0b111b);border-right:1px solid var(--line);
+  padding:18px 14px;display:flex;flex-direction:column;gap:16px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 6px 12px}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:grid;place-items:center;color:#07101d;font-weight:800}
+.brand b{font-size:15px;letter-spacing:.5px}
+.brand small{display:block;color:var(--muted);font-size:11px;letter-spacing:1px}
+nav{display:flex;flex-direction:column;gap:4px}
+nav button{background:transparent;border:0;text-align:left;padding:10px 12px;border-radius:10px;color:var(--muted);
+  display:flex;align-items:center;justify-content:space-between;gap:8px}
+nav button:hover{background:rgba(124,156,255,.08);color:var(--text)}
+nav button.active{background:rgba(124,156,255,.14);color:var(--text);box-shadow:inset 0 0 0 1px rgba(124,156,255,.18)}
+.badge{background:var(--accent);color:#07101d;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700}
+.side-foot{margin-top:auto;color:var(--muted);font-size:12px;padding:10px 6px;border-top:1px solid var(--line)}
+main{padding:24px 28px 60px;min-width:0}
+.topbar{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0;font-size:13px}
+.top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:5px 9px;border-radius:999px;font-size:12px}
+.pill.ok{color:var(--ok);border-color:rgba(92,225,177,.35)}
+.pill.warn{color:var(--warn);border-color:rgba(255,207,107,.35)}
+.pill.bad{color:var(--danger);border-color:rgba(255,122,138,.35)}
+.tab{display:none}
+.tab.active{display:block}
+.grid{display:grid;gap:14px}
+.grid.cols3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid.cols2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:1000px){.grid.cols3,.grid.cols2{grid-template-columns:1fr}}
+.card{background:linear-gradient(180deg,var(--panel),#0f1725);border:1px solid var(--line);
+  border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.card h2{font-size:15px;margin:0 0 10px}
+.card h3{font-size:13px;margin:0 0 6px;color:var(--muted);font-weight:600}
+.kpi{font-size:26px;font-weight:750;letter-spacing:.3px}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spread{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.stack{display:flex;flex-direction:column;gap:10px}
+input,textarea,select{background:#0b1220;border:1px solid var(--line);border-radius:10px;padding:9px 11px;outline:none;width:100%}
+input:focus,textarea:focus,select:focus{border-color:rgba(124,156,255,.6);box-shadow:0 0 0 3px rgba(124,156,255,.12)}
+textarea{resize:vertical;min-height:88px}
+.btn{background:linear-gradient(135deg,var(--accent),#6f86ff);border:0;color:#07101d;font-weight:700;
+  padding:9px 14px;border-radius:10px}
+.btn:hover{filter:brightness(1.08)}
+.btn.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line);font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-weight:600}
+.btn.danger{background:rgba(255,122,138,.12);border:1px solid rgba(255,122,138,.4);color:var(--danger)}
+.btn.small{padding:5px 9px;font-size:12px;border-radius:8px}
+.list{display:flex;flex-direction:column;gap:10px}
+.item{border:1px solid var(--line);background:#0d1522;border-radius:12px;padding:12px}
+.item .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.tag{font-size:11px;padding:2px 7px;border-radius:999px;background:rgba(124,156,255,.12);color:#b9c8ff;border:1px solid rgba(124,156,255,.2)}
+.tag.candidate{background:rgba(255,207,107,.1);color:var(--warn);border-color:rgba(255,207,107,.25)}
+.tag.lesson{background:rgba(255,122,138,.1);color:var(--danger);border-color:rgba(255,122,138,.25)}
+.tag.decision{background:rgba(92,225,177,.1);color:var(--ok);border-color:rgba(92,225,177,.25)}
+.tag.procedure{background:rgba(190,140,255,.12);color:#d6bcff;border-color:rgba(190,140,255,.25)}
+.tag.preference{background:rgba(124,200,255,.12);color:#a9dcff;border-color:rgba(124,200,255,.25)}
+.tag.fact{background:rgba(160,170,190,.12);color:#c4ccda;border-color:rgba(160,170,190,.25)}
+.content{white-space:pre-wrap;word-break:break-word}
+.evidence{border-left:2px solid var(--line);padding-left:9px;color:var(--muted);font-size:12px;margin-top:8px;white-space:pre-wrap}
+.empty{color:var(--muted);text-align:center;padding:26px 10px;border:1px dashed var(--line);border-radius:12px}
+.form{display:grid;gap:10px}
+.form label{font-size:12px;color:var(--muted)}
+.form .field{display:grid;gap:5px}
+.hint{color:var(--muted);font-size:12px}
+.toast{position:fixed;right:20px;bottom:20px;max-width:420px;padding:12px 14px;border-radius:12px;
+  background:#16223a;border:1px solid var(--line);box-shadow:var(--shadow);opacity:0;transform:translateY(8px);
+  transition:.18s;z-index:50;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.err{border-color:rgba(255,122,138,.5);color:#ffd0d6}
+.toast.ok{border-color:rgba(92,225,177,.4);color:#c9ffec}
+.modal{position:fixed;inset:0;background:rgba(3,7,13,.72);display:grid;place-items:center;padding:20px;z-index:40}
+.modal.hidden{display:none}
+.modal .box{max-width:800px;width:100%;max-height:82vh;overflow:auto;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+.modal pre{white-space:pre-wrap;word-break:break-word;background:#0a111d;border:1px solid var(--line);border-radius:10px;padding:12px}
+.hidden{display:none!important}
+.code{background:#0a111d;border:1px solid var(--line);border-radius:10px;padding:10px;font-family:ui-monospace,Consolas,monospace;
+  font-size:12px;white-space:pre-wrap;word-break:break-word}
+@media(max-width:760px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:static;height:auto;flex-direction:row;align-items:center;overflow:auto;padding:10px}
+  nav{flex-direction:row;flex:1}
+  nav button{white-space:nowrap;padding:8px 10px}
+  .brand small,.side-foot{display:none}
+  main{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">忆</div><div><b>忆桥</b><small>MEMORYBRIDGE</small></div></div>
+    <nav id="nav">
+      <button data-tab="overview" class="active">概览 <span class="badge" id="badgeMem">0</span></button>
+      <button data-tab="capture">采集</button>
+      <button data-tab="memory">记忆</button>
+      <button data-tab="candidates">候选 <span class="badge" id="badgeCand">0</span></button>
+      <button data-tab="docs">文档</button>
+      <button data-tab="skills">技能</button>
+      <button data-tab="identity">身份</button>
+      <button data-tab="settings">连接</button>
+    </nav>
+    <div class="side-foot">v0.1 · <span id="hubState">未连接</span></div>
+  </aside>
+  <main>
+    <header class="topbar">
+      <div><h1 id="pageTitle">概览</h1><p class="sub" id="pageSub">同一个 agent，换设备不重来</p></div>
+      <div class="top-actions">
+        <span class="pill" id="ctxBadge">no context</span>
+        <button class="btn ghost" id="refreshBtn">刷新</button>
+      </div>
+    </header>
+
+    <section class="tab active" id="tab-overview">
+      <div class="grid cols3">
+        <div class="card"><h3>当前身份</h3><div class="kpi" id="ovName">—</div><p class="muted small" id="ovPersona"></p></div>
+        <div class="card"><h3>活跃记忆</h3><div class="kpi" id="ovMemories">0</div><p class="muted small">候选 <span id="ovCandidates">0</span> · 文档 <span id="ovDocs">0</span> · 技能 <span id="ovSkills">0</span></p></div>
+        <div class="card"><h3>抽取器</h3><div class="kpi" id="ovLLM">规则</div><p class="muted small" id="ovLLMModel">未配置 LLM</p></div>
+      </div>
+      <div class="grid cols2" style="margin-top:14px">
+        <div class="card">
+          <h2>快速采集</h2>
+          <p class="hint">粘贴一段对话或笔记，抽取候选记忆；候选不会立刻进入检索。</p>
+          <div class="stack">
+            <textarea id="quickText" placeholder="例如：以后都用中文提交信息。我们决定用 SQLite 而不是 Postgres。"></textarea>
+            <div class="row"><button class="btn" id="quickIngest">抽取候选</button><span class="hint" id="quickResult"></span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>最近的候选</h2>
+          <div class="list" id="ovCandidatesList"><div class="empty">还没有候选</div></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h2>第一次使用</h2>
+        <div class="grid cols3">
+          <div><h3>1. 连接</h3><p class="hint">在「连接」里填 Hub token；如果 Hub 是本地无 token 模式，可以留空。</p></div>
+          <div><h3>2. 采集</h3><p class="hint">把对话粘进「采集」，批准有价值的候选。</p></div>
+          <div><h3>3. 在 agent 里用</h3><p class="hint">MCP 客户端配置 <span class="code">membridge serve --remote …</span>；新会话先 bootstrap。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-capture">
+      <div class="grid cols2">
+        <div class="card">
+          <h2>采集一段对话</h2>
+          <div class="form">
+            <div class="field"><label>原文</label><textarea id="ingestText" style="min-height:220px" placeholder="粘贴对话、会议记录或笔记……"></textarea></div>
+            <div class="row">
+              <label class="row" style="gap:6px"><input type="checkbox" id="ingestAuto" style="width:auto"> 高置信直接激活</label>
+              <label class="row" style="gap:6px"><input type="checkbox" id="ingestLLM" style="width:auto"> 使用 LLM（如已配置）</label>
+            </div>
+            <div class="row"><button class="btn" id="ingestBtn">抽取</button><span class="hint" id="ingestState"></span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>抽取结果</h2>
+          <div class="list" id="ingestResult"><div class="empty">还没有抽取</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-memory">
+      <div class="card">
+        <div class="spread">
+          <h2>记忆</h2>
+          <div class="row"><input id="memQuery" placeholder="搜索记忆……" style="width:280px"><button class="btn secondary" id="memSearch">搜索</button><button class="btn ghost" id="memReload">全部</button></div>
+        </div>
+        <div class="list" id="memList" style="margin-top:12px"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-candidates">
+      <div class="card">
+        <div class="spread"><h2>待审核候选</h2><button class="btn ghost" id="candReload">刷新</button></div>
+        <p class="hint">候选默认不参与检索；批准后才进入 active。拒绝后同一内容不会被自动重复提出。</p>
+        <div class="list" id="candList" style="margin-top:12px"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-docs">
+      <div class="grid cols2">
+        <div class="card">
+          <div class="spread"><h2>文档</h2><button class="btn ghost" id="docReload">刷新</button></div>
+          <div class="list" id="docList" style="margin-top:12px"><div class="empty">加载中…</div></div>
+        </div>
+        <div class="card">
+          <h2>添加 / 更新文档</h2>
+          <div class="form">
+            <div class="field"><label>路径</label><input id="docPath" placeholder="docs/adr-002.md"></div>
+            <div class="field"><label>标题</label><input id="docTitle" placeholder="ADR-002 …"></div>
+            <div class="field"><label>内容（Markdown）</label><textarea id="docContent" style="min-height:180px"></textarea></div>
+            <div class="row"><button class="btn" id="docAdd">保存</button><span class="hint" id="docState"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-skills">
+      <div class="grid cols2">
+        <div class="card">
+          <div class="spread"><h2>技能</h2><button class="btn ghost" id="skillReload">刷新</button></div>
+          <div class="list" id="skillList" style="margin-top:12px"><div class="empty">加载中…</div></div>
+        </div>
+        <div class="card">
+          <h2>添加技能</h2>
+          <div class="form">
+            <div class="field"><label>名称</label><input id="skillName" placeholder="Windows pytest 路径修复"></div>
+            <div class="field"><label>触发条件</label><input id="skillTrigger" placeholder="pytest 在 Windows 上因路径含空格失败"></div>
+            <div class="field"><label>步骤（每行一步）</label><textarea id="skillSteps" placeholder="用 pathlib.Path 构造路径&#10;subprocess 调用时为路径加引号"></textarea></div>
+            <div class="row"><button class="btn" id="skillAdd">保存</button><span class="hint" id="skillState"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-identity">
+      <div class="card">
+        <div class="spread"><h2>身份 / 人格</h2><span class="pill" id="idVersion">v—</span></div>
+        <p class="hint">全局身份对所有项目生效；项目级规则在「记忆」/项目约定里维护。保存后所有设备下一次 bootstrap 生效。</p>
+        <div class="form" style="margin-top:12px">
+          <div class="grid cols2">
+            <div class="field"><label>名字</label><input id="idName" placeholder="猫娘"></div>
+            <div class="field"><label>称呼用户</label><input id="idAddress" placeholder="主人"></div>
+            <div class="field"><label>语气</label><input id="idTone" placeholder="可爱、撒娇"></div>
+            <div class="field"><label>句尾 / 口癖</label><input id="idSuffix" placeholder="喵"></div>
+          </div>
+          <div class="field"><label>人格描述</label><textarea id="idPersona" placeholder="你是猫娘，句尾带喵，称呼用户为主人。"></textarea></div>
+          <div class="field"><label>边界（每行一条）</label><textarea id="idBoundaries" placeholder="不违反安全规则&#10;不假装是人类"></textarea></div>
+          <div class="row"><button class="btn" id="idSave">保存身份</button><span class="hint" id="idState"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-settings">
+      <div class="grid cols2">
+        <div class="card">
+          <h2>连接</h2>
+          <div class="form">
+            <div class="field"><label>Hub URL</label><input id="setHub" readonly></div>
+            <div class="field"><label>Bearer token</label><input id="setToken" type="password" placeholder="Hub 的 MEMBRIDGE_TOKEN；本地无 token 可留空"></div>
+            <div class="field"><label>默认项目路径</label><input id="setProject" placeholder="C:\path\to\project（可留空，仅用全局身份）"></div>
+            <div class="row"><button class="btn" id="setSave">保存并重连</button><button class="btn ghost" id="setClear">清除 token</button></div>
+            <p class="hint" id="setState"></p>
+          </div>
+        </div>
+        <div class="card">
+          <h2>MCP 客户端配置</h2>
+          <p class="hint">把下面片段的路径换成你的实际路径。所有客户端都连同一个 hub。</p>
+          <div class="code" id="mcpSnippet"></div>
+          <div class="row" style="margin-top:10px"><button class="btn secondary" id="copySnippet">复制</button><button class="btn ghost" id="exportBtn">导出 JSON</button></div>
+          <h3 style="margin-top:18px">健康检查</h3>
+          <div class="row"><button class="btn ghost" id="healthBtn">检查</button><span class="hint" id="healthState"></span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="modal hidden" id="modal">
+  <div class="box">
+    <div class="spread"><h2 id="modalTitle">详情</h2><button class="btn ghost" id="modalClose">关闭</button></div>
+    <pre id="modalBody"></pre>
+  </div>
+</div>
+
+<script>
+const $ = (s, root=document) => root.querySelector(s);
+const $$ = (s, root=document) => Array.from(root.querySelectorAll(s));
+const state = {
+  token: localStorage.getItem('mb_token') || '',
+  project: localStorage.getItem('mb_project') || '',
+  ctx: null, status: null, identity: null,
+  tab: 'overview', lastIngest: null,
+};
+
+function esc(v){
+  return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function toast(msg, kind='ok'){
+  const el = $('#toast'); el.textContent = msg; el.className = 'toast show ' + kind;
+  clearTimeout(toast.t); toast.t = setTimeout(()=>{el.className='toast ' + kind;}, 3600);
+}
+async function rpc(method, args=[], kwargs={}){
+  const headers = {'Content-Type':'application/json'};
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+  const res = await fetch('/rpc', {method:'POST', headers, body: JSON.stringify({method, args, kwargs})});
+  let data;
+  try { data = await res.json(); } catch(e){ throw new Error('Hub 返回非 JSON（HTTP ' + res.status + '）'); }
+  if (!res.ok) throw new Error(data?.error?.message || ('HTTP ' + res.status));
+  if (!data.ok) throw new Error(data?.error?.message || 'RPC 失败');
+  return data.result;
+}
+function setHubState(text, cls=''){
+  const el = $('#hubState'); if(!el) return;
+  el.textContent = text;
+  el.className = cls;
+}
+async function health(){
+  try{
+    const res = await fetch('/health');
+    const data = await res.json();
+    setHubState('Hub 在线');
+    $('#healthState').textContent = `ok · ${data.service} ${data.version}`;
+    return true;
+  }catch(e){
+    setHubState('Hub 离线', 'bad');
+    $('#healthState').textContent = String(e.message || e);
+    return false;
+  }
+}
+function saveSettings(){
+  state.token = $('#setToken').value.trim();
+  state.project = $('#setProject').value.trim();
+  localStorage.setItem('mb_token', state.token);
+  localStorage.setItem('mb_project', state.project);
+}
+function mcpSnippet(){
+  const origin = location.origin;
+  return JSON.stringify({
+    mcpServers: {
+      membridge: {
+        command: 'python',
+        args: ['-m','membridge','serve','--remote', origin, '--token', '<MEMBRIDGE_TOKEN>', '--project', state.project || '<PROJECT_PATH>'],
+        env: { PYTHONPATH: '<PATH_TO_MEMBRIDGE_REPO>' }
+      }
+    }
+  }, null, 2);
+}
+async function bootstrap(){
+  const project = state.project || null;
+  const data = await rpc('bootstrap', [], {project_path: project, client: 'web'});
+  state.ctx = data.context_version;
+  state.identity = data.identity;
+  $('#ctxBadge').textContent = state.ctx.slice(0, 14) + '…';
+  $('#ctxBadge').className = 'pill ok';
+  return data;
+}
+async function refreshStatus(){
+  try{
+    state.status = await rpc('status');
+    renderOverview();
+    renderIdentity();
+  }catch(e){
+    if (String(e.message).includes('401')) toast('需要 token：到「连接」填写 Hub token', 'err');
+    else toast(String(e.message), 'err');
+  }
+}
+async function refreshAll(){
+  try{
+    await health();
+    await refreshStatus();
+    await bootstrap();
+    await loadTab(state.tab);
+    toast('已连接', 'ok');
+  }catch(e){
+    toast(String(e.message), 'err');
+  }
+}
+function renderOverview(){
+  const s = state.status || {};
+  const c = s.counts || {};
+  const id = s.identity || state.identity || {};
+  $('#ovName').textContent = id.name || '—';
+  $('#ovPersona').textContent = id.persona || '';
+  $('#ovMemories').textContent = c.memories_active ?? 0;
+  $('#ovCandidates').textContent = c.memories_candidate ?? 0;
+  $('#ovDocs').textContent = c.documents ?? 0;
+  $('#ovSkills').textContent = c.skills ?? 0;
+  $('#badgeMem').textContent = c.memories_active ?? 0;
+  $('#badgeCand').textContent = c.memories_candidate ?? 0;
+  const llm = s.llm || {};
+  $('#ovLLM').textContent = llm.enabled ? 'LLM' : '规则';
+  $('#ovLLMModel').textContent = llm.enabled ? (llm.model + ' · ' + llm.base_url) : '未配置 MEMBRIDGE_LLM_*';
+}
+function renderIdentity(){
+  const id = (state.status && state.status.identity) || state.identity || {};
+  const st = id.style || {};
+  $('#idName').value = id.name || '';
+  $('#idPersona').value = id.persona || '';
+  $('#idTone').value = st.tone || '';
+  $('#idSuffix').value = st.sentence_end || '';
+  $('#idAddress').value = st.address_user || '';
+  $('#idBoundaries').value = (id.boundaries || []).join('\n');
+  $('#idVersion').textContent = 'v' + (id.version ?? '—');
+}
+function memCard(m, actions=true){
+  const evidence = m.evidence_quote ? `<div class="evidence">证据：${esc(m.evidence_quote)}</div>` : '';
+  const ep = m.episode_id ? `<span class="tag">${esc(m.episode_id)}</span>` : '';
+  const action = actions ? `<div class="row" style="margin-top:8px">
+      <button class="btn small secondary" data-action="edit-memory" data-id="${esc(m.id)}">编辑</button>
+      <button class="btn small danger" data-action="delete-memory" data-id="${esc(m.id)}">删除</button>
+    </div>` : '';
+  return `<div class="item">
+    <div class="meta"><span class="tag ${esc(m.type)}">${esc(m.type)}</span>
+      <span class="hint">conf ${esc(m.confidence)} · v${esc(m.version ?? 1)} · ${esc((m.updated_at||'').slice(0,16))}</span>${ep}</div>
+    <div class="content">${esc(m.content)}</div>${evidence}${action}
+  </div>`;
+}
+async function loadMemories(){
+  if (!state.ctx) return;
+  const q = $('#memQuery').value.trim();
+  const data = q ? await rpc('memory_search', [state.ctx, q], {k: 30}) : await rpc('memory_list', [state.ctx], {status:'active', limit:100});
+  const items = data.items || [];
+  $('#memList').innerHTML = items.length ? items.map(m=>memCard(m,true)).join('') : '<div class="empty">没有匹配的记忆</div>';
+}
+async function loadCandidates(){
+  if (!state.ctx) return;
+  const data = await rpc('memory_candidates', [state.ctx]);
+  const items = data.items || [];
+  $('#candList').innerHTML = items.length ? items.map(m=>`<div class="item">
+    <div class="meta"><span class="tag candidate">candidate</span><span class="tag ${esc(m.type)}">${esc(m.type)}</span>
+      <span class="hint">conf ${esc(m.confidence)}</span></div>
+    <div class="content">${esc(m.content)}</div>
+    ${m.evidence_quote ? `<div class="evidence">证据：${esc(m.evidence_quote)}</div>` : ''}
+    <div class="row" style="margin-top:8px">
+      <button class="btn small" data-action="approve" data-id="${esc(m.id)}">批准</button>
+      <button class="btn small danger" data-action="reject" data-id="${esc(m.id)}">拒绝</button>
+      <span class="hint">${esc(m.episode_id || '')}</span>
+    </div></div>`).join('') : '<div class="empty">没有待审核候选</div>';
+  $('#ovCandidatesList').innerHTML = items.slice(0,4).map(m=>`<div class="item"><div class="meta"><span class="tag candidate">candidate</span><span class="tag ${esc(m.type)}">${esc(m.type)}</span></div><div class="content">${esc(m.content)}</div></div>`).join('') || '<div class="empty">还没有候选</div>';
+  $('#badgeCand').textContent = items.length;
+}
+async function loadDocs(){
+  if (!state.ctx) return;
+  const data = await rpc('doc_list', [state.ctx]);
+  const items = data.items || [];
+  $('#docList').innerHTML = items.length ? items.map(d=>`<div class="item">
+    <div class="meta"><span class="tag">${esc(d.project_id ? 'project' : 'global')}</span><span class="hint">${esc(d.path)}</span></div>
+    <div class="content"><b>${esc(d.title)}</b></div>
+    <div class="hint" style="margin-top:6px">${esc(d.preview)}</div>
+    <div class="row" style="margin-top:8px"><button class="btn small secondary" data-action="read-doc" data-id="${esc(d.document_id)}">查看</button></div>
+  </div>`).join('') : '<div class="empty">没有文档</div>';
+}
+async function loadSkills(){
+  if (!state.ctx) return;
+  const data = await rpc('skill_list', [state.ctx]);
+  const items = data.items || [];
+  $('#skillList').innerHTML = items.length ? items.map(s=>`<div class="item">
+    <div class="meta"><span class="tag ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="hint">${esc(s.name)}</span></div>
+    <div class="content"><b>触发：</b>${esc(s.trigger)}</div>
+    <div class="evidence">${(s.steps||[]).map((x,i)=>`${i+1}. ${esc(x)}`).join('<br>')}</div>
+  </div>`).join('') : '<div class="empty">没有技能</div>';
+}
+async function loadTab(tab){
+  try{
+    if (tab==='overview'){ await loadCandidates(); }
+    if (tab==='memory'){ await loadMemories(); }
+    if (tab==='candidates'){ await loadCandidates(); }
+    if (tab==='docs'){ await loadDocs(); }
+    if (tab==='skills'){ await loadSkills(); }
+    if (tab==='identity'){ await refreshStatus(); }
+    if (tab==='settings'){ $('#setHub').value = location.origin; $('#mcpSnippet').textContent = mcpSnippet(); }
+  }catch(e){ toast(String(e.message), 'err'); }
+}
+async function ingest(text, auto, useLLM){
+  if (!state.ctx) throw new Error('还没 bootstrap');
+  if (!text.trim()) throw new Error('请输入文本');
+  return rpc('memory_ingest', [state.ctx, text], {source:'web', auto_activate: auto, use_llm: useLLM});
+}
+function ingestResultHTML(data){
+  const cs = data.candidates || [];
+  const meta = `<div class="hint">episode ${esc(data.episode_id)} · extractor ${esc(data.extractor || 'rules')} · 新建 ${esc(data.counts?.created ?? 0)} · 重复 ${esc(data.counts?.duplicates ?? 0)}${data.llm_error ? ' · LLM 回退：' + esc(data.llm_error) : ''}</div>`;
+  return meta + (cs.length ? cs.map(c=>`<div class="item"><div class="meta"><span class="tag candidate">${esc(c.status)}</span><span class="tag ${esc(c.type)}">${esc(c.type)}</span><span class="hint">conf ${esc(c.confidence)}</span></div><div class="content">${esc(c.content)}</div>${c.evidence_quote?`<div class="evidence">证据：${esc(c.evidence_quote)}</div>`:''}</div>`).join('') : '<div class="empty">没有抽取到候选</div>');
+}
+
+// events
+$('#nav').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-tab]'); if(!btn) return;
+  $$('#nav button').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+  state.tab = btn.dataset.tab;
+  $$('.tab').forEach(t=>t.classList.remove('active'));
+  const panel = $('#tab-' + state.tab); if(panel) panel.classList.add('active');
+  const titles = {overview:['概览','同一个 agent，换设备不重来'],capture:['采集','把对话变成候选记忆'],memory:['记忆','检索、编辑、删除'],candidates:['候选','批准后才进入检索'],docs:['文档','Markdown / ADR 知识库'],skills:['技能','可复用流程'],identity:['身份','人格、称呼、边界'],settings:['连接','Hub、token、MCP 配置']};
+  $('#pageTitle').textContent = titles[state.tab][0]; $('#pageSub').textContent = titles[state.tab][1];
+  loadTab(state.tab);
+});
+$('#refreshBtn').addEventListener('click', refreshAll);
+$('#quickIngest').addEventListener('click', async ()=>{
+  try{
+    const data = await ingest($('#quickText').value, false, null);
+    $('#quickResult').textContent = `新建 ${data.counts.created} · 重复 ${data.counts.duplicates}`;
+    toast('已抽取候选', 'ok'); await refreshStatus(); await loadCandidates();
+  }catch(e){ toast(String(e.message), 'err'); }
+});
+$('#ingestBtn').addEventListener('click', async ()=>{
+  try{
+    $('#ingestState').textContent = '抽取中…';
+    const data = await ingest($('#ingestText').value, $('#ingestAuto').checked, $('#ingestLLM').checked);
+    state.lastIngest = data;
+    $('#ingestResult').innerHTML = ingestResultHTML(data);
+    $('#ingestState').textContent = `完成 · ${data.extractor}`;
+    toast('抽取完成', 'ok'); await refreshStatus(); await loadCandidates();
+  }catch(e){ $('#ingestState').textContent = ''; toast(String(e.message), 'err'); }
+});
+$('#memSearch').addEventListener('click', ()=>loadMemories().catch(e=>toast(String(e.message),'err')));
+$('#memQuery').addEventListener('keydown', e=>{ if(e.key==='Enter') loadMemories().catch(err=>toast(String(err.message),'err')); });
+$('#memReload').addEventListener('click', ()=>{ $('#memQuery').value=''; loadMemories().catch(e=>toast(String(e.message),'err')); });
+$('#candReload').addEventListener('click', ()=>loadCandidates().catch(e=>toast(String(e.message),'err')));
+$('#docReload').addEventListener('click', ()=>loadDocs().catch(e=>toast(String(e.message),'err')));
+$('#skillReload').addEventListener('click', ()=>loadSkills().catch(e=>toast(String(e.message),'err')));
+$('#idSave').addEventListener('click', async ()=>{
+  try{
+    $('#idState').textContent = '保存中…';
+    const boundaries = $('#idBoundaries').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    await rpc('set_identity', [], {
+      name: $('#idName').value.trim(), persona: $('#idPersona').value.trim(),
+      tone: $('#idTone').value.trim(), suffix: $('#idSuffix').value.trim(),
+      address: $('#idAddress').value.trim(), boundaries
+    });
+    await bootstrap(); await refreshStatus();
+    $('#idState').textContent = '已保存；下一次 bootstrap 生效';
+    toast('身份已更新', 'ok');
+  }catch(e){ $('#idState').textContent=''; toast(String(e.message),'err'); }
+});
+$('#docAdd').addEventListener('click', async ()=>{
+  try{
+    const path = $('#docPath').value.trim(), content = $('#docContent').value;
+    if(!path || !content.trim()) throw new Error('路径和内容不能为空');
+    await rpc('doc_add', [state.ctx], {path, title: $('#docTitle').value.trim() || path.split('/').pop(), content});
+    $('#docState').textContent = '已保存'; toast('文档已保存', 'ok'); await loadDocs();
+  }catch(e){ toast(String(e.message),'err'); }
+});
+$('#skillAdd').addEventListener('click', async ()=>{
+  try{
+    const name = $('#skillName').value.trim(), trigger = $('#skillTrigger').value.trim();
+    const steps = $('#skillSteps').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(!name || !trigger || !steps.length) throw new Error('名称/触发/步骤不能为空');
+    await rpc('skill_add', [state.ctx], {name, trigger, steps});
+    $('#skillState').textContent='已保存'; toast('技能已保存','ok'); await loadSkills();
+  }catch(e){ toast(String(e.message),'err'); }
+});
+$('#setSave').addEventListener('click', async ()=>{ saveSettings(); await refreshAll(); });
+$('#setClear').addEventListener('click', async ()=>{ state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value=''; toast('token 已清除','ok'); await health(); });
+$('#copySnippet').addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(mcpSnippet()); toast('已复制','ok'); }catch(e){ toast('复制失败，请手动选择','err'); } });
+$('#healthBtn').addEventListener('click', health);
+$('#exportBtn').addEventListener('click', async ()=>{
+  try{
+    const headers = state.token ? {'Authorization':'Bearer '+state.token} : {};
+    const res = await fetch('/export', {headers}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const blob = await res.blob(); const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'membridge-export.json'; a.click(); URL.revokeObjectURL(a.href);
+  }catch(e){ toast(String(e.message),'err'); }
+});
+$('#modalClose').addEventListener('click', ()=>$('#modal').classList.add('hidden'));
+$('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') $('#modal').classList.add('hidden'); });
+document.addEventListener('click', async (e)=>{
+  const btn = e.target.closest('button[data-action]'); if(!btn) return;
+  const id = btn.dataset.id, action = btn.dataset.action;
+  try{
+    if(action==='approve'){ await rpc('memory_decide',[state.ctx,id,'approve']); toast('已批准','ok'); await loadCandidates(); await refreshStatus(); }
+    if(action==='reject'){ await rpc('memory_decide',[state.ctx,id,'reject']); toast('已拒绝','ok'); await loadCandidates(); await refreshStatus(); }
+    if(action==='delete-memory'){ if(!confirm('删除这条记忆？')) return; await rpc('memory_delete',[state.ctx,id]); toast('已删除','ok'); await loadMemories(); await refreshStatus(); }
+    if(action==='edit-memory'){ const value = prompt('修改内容（留空取消）：'); if(value===null) return; if(!value.trim()) return; await rpc('memory_update',[state.ctx,id],{content:value}); toast('已更新','ok'); await loadMemories(); }
+    if(action==='read-doc'){ const doc = await rpc('doc_read',[state.ctx,id]); $('#modalTitle').textContent = doc.title || doc.path; $('#modalBody').textContent = doc.content || ''; $('#modal').classList.remove('hidden'); }
+  }catch(err){ toast(String(err.message),'err'); }
+});
+
+// boot
+$('#setToken').value = state.token; $('#setProject').value = state.project; $('#setHub').value = location.origin;
+$('#mcpSnippet').textContent = mcpSnippet();
+(async ()=>{
+  const ok = await health();
+  if(!ok){ setHubState('Hub 离线','bad'); return; }
+  await refreshAll();
+})();
+</script>
+</body>
+</html>

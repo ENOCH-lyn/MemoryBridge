@@ -93,6 +93,7 @@ class ServiceTest(unittest.TestCase):
         self.svc.doc_add(ctx, path="docs/adr.md", title="ADR", content="使用 SQLite 作为本地存储。")
         docs = self.svc.doc_search(ctx, "SQLite")
         self.assertEqual(docs["count"], 1)
+        self.assertEqual(self.svc.doc_list(ctx)["count"], 1)
         doc = self.svc.doc_read(ctx, docs["items"][0]["document_id"])
         self.assertIn("SQLite", doc["content"])
 

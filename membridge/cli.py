@@ -210,6 +210,9 @@ def cmd_docs(args) -> int:
     elif args.docs_command == "search":
         bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
         result = svc.doc_search(bootstrap["context_version"], args.query, k=args.k)
+    elif args.docs_command == "list":
+        bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
+        result = svc.doc_list(bootstrap["context_version"])
     elif args.docs_command == "read":
         bootstrap = svc.bootstrap(project_path=args.project_path, client="cli")
         result = svc.doc_read(bootstrap["context_version"], args.document_id)
@@ -401,6 +404,9 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--project-path", default=None)
     search.add_argument("--k", type=int, default=5)
     search.set_defaults(func=cmd_docs, docs_command="search")
+    ls = p_sub.add_parser("list")
+    ls.add_argument("--project-path", default=None)
+    ls.set_defaults(func=cmd_docs, docs_command="list")
     read = p_sub.add_parser("read")
     read.add_argument("document_id")
     read.add_argument("--project-path", default=None)

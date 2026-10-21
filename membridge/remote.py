@@ -15,12 +15,14 @@ import sys
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 from .service import AgentSyncService, GateError
 
 DEFAULT_PORT = 8787
 MAX_BODY = 2 * 1024 * 1024
+WEBUI_PATH = Path(__file__).with_name("webui.html")
 
 ALLOWED_METHODS = {
     "bootstrap",
@@ -42,6 +44,7 @@ ALLOWED_METHODS = {
     "memory_delete",
     "episode_add",
     "doc_add",
+    "doc_list",
     "doc_search",
     "doc_read",
     "skill_add",
@@ -64,12 +67,21 @@ class HubHandler(BaseHTTPRequestHandler):
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self._send_body(status, body, "application/json; charset=utf-8")
+
+    def _send_body(self, status: int, body: bytes, content_type: str) -> None:
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _webui(self) -> bytes:
+        try:
+            return WEBUI_PATH.read_bytes()
+        except OSError:
+            return b"MemoryBridge UI file is missing (membridge/webui.html)."
 
     def _authorized(self) -> bool:
         if not self.token:
@@ -81,6 +93,12 @@ class HubHandler(BaseHTTPRequestHandler):
         return AgentSyncService(self.db_path)
 
     def do_GET(self) -> None:  # noqa: N802
+        if self.path in {"/", "/index.html", "/ui"}:
+            self._send_body(200, self._webui(), "text/html; charset=utf-8")
+            return
+        if self.path == "/favicon.ico":
+            self._send_body(204, b"", "image/x-icon")
+            return
         if self.path == "/health":
             self._send_json(200, {"ok": True, "service": "membridge", "version": "0.1.0"})
             return

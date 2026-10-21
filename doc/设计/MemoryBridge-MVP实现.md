@@ -30,6 +30,9 @@ mcp_server.py
                                                      (POST /rpc, Bearer)
 ```
 
+- `extract.py`：确定性规则抽取；`llm.py`：可选 OpenAI 兼容抽取，失败回退规则。
+- `webui.html`：Hub 自带单页控制台（概览/采集/记忆/候选/文档/技能/身份/连接）。
+
 ## 3. 数据模型
 
 | 表 | 作用 |
@@ -89,7 +92,7 @@ memory_delete(ctx, id)       # 软删除 + deleted_at
 - 候选默认不可检索；`memory_search` 只查 `status='active'`。
 - 每条候选保留 `episode_id` + `evidence_quote`，可回溯到原始片段。
 - `reject` 后同一内容的 hash 仍在 rejected，`memory_ingest` 不会自动重复提出。
-- 当前抽取是关键词规则；后续可把 `extract.py` 换成 LLM 抽取，接口不变。
+- 抽取器：规则版始终可用；配置 `MEMBRIDGE_LLM_BASE_URL/API_KEY/MODEL` 后优先 LLM，失败回退规则，结果里返回 `extractor` 与 `llm_error`。
 
 ## 5. 检索
 
@@ -107,6 +110,19 @@ memory_delete(ctx, id)       # 软删除 + deleted_at
 - `tools/call` 的 Gate 错误返回 `isError: true` + `structuredContent.code`。
 - 资源 `memory://identity`；prompt `recall_for_task`。
 - 本地模式走 stdio；stdout 只写 JSON-RPC，日志走 stderr。
+
+### 6.2 Web 控制台
+
+Hub 在 `GET /` 直接返回 `webui.html`（单文件 HTML/CSS/JS，无构建、无 CDN）：
+
+- 概览：身份、活跃记忆/候选/文档/技能、LLM 状态、快速采集。
+- 采集：文本 → `memory_ingest`，展示 extractor/候选/证据。
+- 记忆：搜索、编辑、软删除；候选：批准/拒绝。
+- 文档/技能：列表、查看、添加。
+- 身份：改 persona/style/boundaries；保存后下一次 bootstrap 生效。
+- 连接：token、项目路径、MCP 配置片段、`/export` 下载、健康检查。
+
+浏览器通过同源 `POST /rpc` 调用 Hub，token 存在 `localStorage`；页面本身不含数据，未带 token 只能看到连接页。
 
 ### 6.1 远程模式（Hub + 本地 Proxy）
 
@@ -135,7 +151,7 @@ memory_delete(ctx, id)       # 软删除 + deleted_at
 
 1. 远程：已有 Hub + 本地 proxy + Bearer；待 TLS、账号体系、限流、Hub 高可用。
 2. 多设备同步：Hub 是中心 SQLite；待 op log + 游标 + 冲突副本，当前并发写最后写入生效。
-3. 抽取：已有规则抽取 + Episode + 候选审核；待 LLM 抽取、语义去重、字段级冲突。
+3. 抽取：规则 + 可选 LLM（OpenAI 兼容）；待语义去重、字段级冲突、LLM 质量评测。
 4. 向量检索：bge-m3 + pgvector + 混合排序。
 5. 技能晋升：候选 → 验证 → 项目/全局，带审计。
 6. 安全：密钥扫描、提示注入标记、权限与速率限制。
