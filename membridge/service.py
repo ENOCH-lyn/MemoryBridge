@@ -420,7 +420,7 @@ class AgentSyncService:
         return self._project_dict(row) if row else None
 
     def project_list(self) -> dict[str, Any]:
-        rows = self.conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
+        rows = self.conn.execute("SELECT * FROM projects WHERE deleted_at IS NULL ORDER BY updated_at DESC").fetchall()
         items = []
         for row in rows:
             item = self._project_dict(row)
@@ -439,6 +439,16 @@ class AgentSyncService:
             "SELECT COUNT(*) AS n FROM memories WHERE project_id IS NULL AND status = 'active'"
         ).fetchone()["n"]
         return {"items": items, "count": len(items), "global_memories": global_memories}
+
+    def project_delete(self, context_version: str, project_id: str) -> dict[str, Any]:
+        self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown project: {project_id}")
+        self.conn.execute("UPDATE projects SET deleted_at = ?, updated_at = ? WHERE id = ?", (utcnow(), utcnow(), project_id))
+        self._audit("project.delete", project_id, {"key": row["key"], "name": row["name"], "soft": True})
+        self.conn.commit()
+        return {"project_id": project_id, "deleted": True, "soft": True}
 
     # ------------------------------------------------------------------
     # bootstrap / context gate

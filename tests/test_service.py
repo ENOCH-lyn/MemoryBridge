@@ -128,6 +128,18 @@ class ServiceTest(unittest.TestCase):
         self.svc.doc_delete(ctx, document_id)
         self.assertEqual(self.svc.doc_list(ctx)["count"], 0)
 
+    def test_project_soft_delete_hides_it(self) -> None:
+        boot = self.svc.bootstrap(project_path="soft-delete-demo")
+        project_id = boot["project"]["id"]
+        self.svc.memory_write(
+            boot["context_version"],
+            "soft delete keeps data",
+            type="fact",
+            topic="soft.delete",
+        )
+        self.svc.project_delete(boot["context_version"], project_id)
+        self.assertNotIn(project_id, [p["id"] for p in self.svc.project_list()["items"]])
+
     def test_documents_can_be_global_or_cross_project(self) -> None:
         ctx_a = self.svc.bootstrap(project_path="doc-a")["context_version"]
         ctx_b = self.svc.bootstrap(project_path="doc-b")["context_version"]

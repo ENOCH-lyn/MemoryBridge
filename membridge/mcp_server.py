@@ -370,6 +370,13 @@ TOOLS: list[dict[str, Any]] = [
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
     },
     {
+        "name": "project_delete",
+        "title": "Soft-delete project",
+        "description": "Soft-delete a project so it disappears from project_list/bootstrap projects. Its data is retained. Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX, "project_id": {"type": "string"}}, ["context_version", "project_id"]),
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
+    },
+    {
         "name": "project_list",
         "title": "List projects",
         "description": "List all known projects with ids, keys, paths and memory/document/skill counts. Use this to discover project_id for batch reads. Requires bootstrap.",
@@ -563,6 +570,8 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
         return _ok(service.skill_delete_file(ctx, args["skill_id"], args["path"]))
     if name == "skill_delete":
         return _ok(service.skill_delete(ctx, args["skill_id"]))
+    if name == "project_delete":
+        return _ok(service.project_delete(ctx, args["project_id"]))
     if name == "project_list":
         return _ok(service.project_list())
     if name == "project_context":

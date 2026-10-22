@@ -29,9 +29,9 @@ membridge.service (systemd, 用户 membridge)
 ## 账号 / token（不写入仓库）
 
 - 初始 admin 密码：服务器 `/root/membridge-admin-password`（root 600）。
-- 初始 MCP API token：服务器 `/root/membridge-api-token`（root 600）。
+- 当前没有 active MCP API token；登录后在「连接」页创建（旧 token 已全部撤销）。
 - 首次登录必须改密；改密后旧会话失效，API token 不受影响。
-- 建议登录后：修改密码 → 在「连接」页撤销 `initial-mcp`，按设备创建新 token。
+- 登录后：修改密码 → 在「连接」页按设备创建新 token。
 
 ## 服务管理
 
@@ -49,11 +49,8 @@ journalctl -u membridge -n 50 --no-pager
 - `HEAD https://mcp.enoch.host/` → 200
 - `GET https://mcp.enoch.host/health` → `{"ok":true,...}`
 - `POST /login` 初始密码 → 200，`must_change_password=true`
-- 初始 API token + 本地 MCP proxy：
-  - `initialize` 成功
-  - `agent_bootstrap` `isError=false`
-  - 返回猫娘 persona 与空项目 `public-smoke`
-- 临时 token 测完已撤销；`initial-mcp` 也已撤销。当前 active token 为 `default-mcp`，明文在 `/root/membridge-api-token`；建议登录后撤销并按设备重建。
+- 初始 API token 测试通过；测试项目 `public-smoke` 已软删除。
+- 临时 token、`initial-mcp`、`default-mcp` 均已撤销；当前没有 active API token，需登录后重建。
 - 初始 admin 密码文件 `/root/membridge-admin-password` 是部署时生成的；如果已经登录改过密码，以新密码为准，文件不会自动更新。
 
 ## 2026-10-22 功能修复（已重新部署）
@@ -63,7 +60,7 @@ journalctl -u membridge -n 50 --no-pager
 - 顶栏和设置页都有「退出登录」；退出后清 Cookie 并 reload，`/me` 返回 401。
 - API token 列表只显示未撤销 token；撤销后刷新列表，不再显示“已撤销但仍占一行”。
 - 服务端新增 `POST /account/username`，`GET /tokens` 只返回 active token。
-- 已用隔离 Hub + Playwright 验证：修改用户名、退出登录、创建/撤销 token、列表刷新；32 tests OK。
+- 已用隔离 Hub + Playwright 验证：修改用户名、退出登录、创建/撤销 token、列表刷新；33 tests OK。
 - 注意：`/root/membridge-admin-password` 是**初始密码**；如果已经登录并改过密码，该文件不会自动更新，以你改后的密码为准。
 
 ## 已知边界

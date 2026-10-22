@@ -60,6 +60,7 @@ ALLOWED_METHODS = {
     "ensure_project",
     "get_project",
     "project_list",
+    "project_delete",
     "memory_add",
     "memory_write",
     "memory_search",

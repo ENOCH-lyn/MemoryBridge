@@ -173,6 +173,10 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 .skill-editor{display:flex;flex-direction:column;min-width:0;min-height:0}
 .skill-editor .CodeMirror{height:calc(68vh - 110px);min-height:260px;font-size:13px;border-radius:var(--radius-s);border:1px solid var(--md-outline-variant)}
 .skill-path{font-family:var(--mono);font-size:12px;color:var(--md-on-surface-variant);margin-bottom:6px}
+.search-field{width:240px;margin:0}
+.search-field input{width:100%;height:40px;box-sizing:border-box;background:var(--md-surface-container-highest);
+  border:0;border-bottom:1px solid var(--md-outline);border-radius:4px 4px 0 0;padding:0 14px;outline:none;color:var(--md-on-surface)}
+.search-field input:focus{border-bottom:2px solid var(--md-primary)}
 [data-theme="dark"] .CodeMirror{background:var(--md-surface-container-highest);color:var(--md-on-surface)}
 [data-theme="dark"] .CodeMirror-gutters{background:var(--md-surface-container-high);border-color:var(--md-outline-variant);color:var(--md-on-surface-variant)}
 [data-theme="dark"] .CodeMirror-cursor{border-left-color:var(--md-on-surface)}
@@ -216,7 +220,6 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
     <div class="auth-brand"><div class="logo">M</div><div><b>忆桥</b><div class="hint" style="margin:0">MEMORYBRIDGE</div></div></div>
     <div id="loginPane">
       <h2>登录</h2>
-      <p class="hint">首次部署使用初始化账号；登录后请立即修改密码。</p>
       <div class="form">
         <div class="field"><label for="loginUser">用户名</label><input id="loginUser" autocomplete="username" placeholder="用户名"></div>
         <div class="field"><label for="loginPass">密码</label><input id="loginPass" type="password" autocomplete="current-password"></div>
@@ -311,7 +314,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
         <div class="card">
           <div class="inline" style="justify-content:space-between;align-items:flex-end">
             <div><h2 class="section-title">记忆</h2></div>
-            <div class="inline"><button class="filled-btn" data-action="new-memory">新建记忆</button><div class="field" style="width:240px"><label for="memQuery">搜索</label><input id="memQuery" placeholder="搜索记忆……"></div><button class="tonal-btn" id="memSearch">搜索</button><button class="text-btn" id="memReload">全部</button></div>
+            <div class="inline"><button class="filled-btn" data-action="new-memory">新建记忆</button><div class="search-field"><input id="memQuery" placeholder="搜索记忆……"></div><button class="tonal-btn" id="memSearch">搜索</button><button class="text-btn" id="memReload">全部</button></div>
           </div>
           <div class="list" id="memList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
@@ -357,7 +360,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
             <div class="form">
               <div class="field"><label for="setHub">Hub URL</label><input id="setHub" readonly></div>
               <div class="field"><label for="setToken">静态服务 token（可选）</label><input id="setToken" type="password" placeholder="兼容 MEMBRIDGE_TOKEN，可留空"></div>
-              <div class="field"><label for="setProject">默认项目路径</label><input id="setProject" placeholder="本地测试默认 demo；填你的项目路径"></div>
+              <div class="field"><label for="setProject">项目路径（可留空）</label><input id="setProject" placeholder="填你的项目路径；留空只显示全局"></div>
               <div class="inline"><button class="filled-btn" id="setSave">保存并重连</button><button class="text-btn" id="setClear">清除 token</button></div>
               <p class="hint" id="setState"></p>
             </div>
@@ -431,7 +434,7 @@ const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => Array.from(root.querySelectorAll(s));
 const state = {
   token: localStorage.getItem('mb_token') || '',
-  project: localStorage.getItem('mb_project') || 'demo',
+  project: localStorage.getItem('mb_project') || '',
   ctx: null, status: null, identity: null, tab: 'overview', username: '',
 };
 const titles = {
@@ -571,6 +574,10 @@ function mcpSnippet(){
 async function bootstrap(){
   const data=await rpc('bootstrap',[],{project_path:state.project||null,client:'web'});
   state.ctx=data.context_version; state.identity=data.identity; state.available=data.available||null; state.projects=data.projects||[]; state.globalMemories=data.global_memories||[]; state.projectMemories=data.project_memories||[];
+  if(state.project && !state.projects.some(p=>p.path===state.project || p.key===state.project)){
+    state.project=''; localStorage.removeItem('mb_project'); $('#setProject').value='';
+    return bootstrap();
+  }
   $('#ctxBadge').textContent='ctx '+state.ctx.slice(4,12);
   $('#ctxBadge').className='chip ok';
   renderOverview();
@@ -615,7 +622,7 @@ function renderOverview(){
   const active=a.memories??c.memories_active??0;
   badgeMem.hidden=!active; badgeMem.textContent=active;
   const projects=state.projects||[];
-  $('#ovProjectsList').innerHTML=projects.length?projects.slice(0,6).map(p=>`<div class="item"><div class="inline" style="justify-content:space-between"><b>${esc(p.name)}</b><span class="hint">${esc(p.memories||0)} 记忆</span></div><div class="hint">${esc(p.path||'')}</div><div class="hint">${esc(p.key||'')}</div></div>`).join(''):'<div class="empty">还没有项目</div>';
+  $('#ovProjectsList').innerHTML=projects.length?projects.slice(0,6).map(p=>`<div class="item"><div class="inline" style="justify-content:space-between"><b>${esc(p.name)}</b><button class="text-btn" data-action="delete-project" data-id="${esc(p.id)}">删除</button></div><div class="hint">${esc(p.path||'')}</div><div class="hint">${esc(p.key||'')} · ${esc(p.memories||0)} 记忆</div></div>`).join(''):'<div class="empty">还没有项目</div>';
   $('#ovProjectCounts').textContent=`全局 ${ (state.globalMemories||[]).length } · 当前项目 ${ (state.projectMemories||[]).length }`;
   $('#ctxBadge').textContent=state.ctx?'ctx '+state.ctx.slice(4,12):'未 bootstrap';
   $('#ctxBadge').className='chip '+(state.ctx?'ok':'');
@@ -701,7 +708,7 @@ function makeEditor(textarea, mode='markdown'){
 }
 async function openMemoryForm(id){
   const m=id?(state.memories||[]).find(x=>x.id===id):null;
-  const scope=m&&!m.project_id?'global':'project';
+  const scope=m?(!m.project_id?'global':'project'):(state.project?'project':'global');
   const types=['fact','preference','decision','lesson','procedure','reference'];
   openEditorDialog(m?'编辑记忆':'新建记忆',`<div class="form">
     <div class="field"><label for="fmContent">内容</label><textarea id="fmContent" rows="4">${esc(m?.content||'')}</textarea></div>
@@ -731,10 +738,11 @@ async function openMemoryForm(id){
 async function openDocForm(id){
   let doc={title:'',path:'docs/',content:''};
   if(id){ doc=await rpc('doc_read',[state.ctx,id]); }
+  const globalDoc=!state.project || (!!id && !doc.project_id);
   openEditorDialog(id?'编辑文档':'新建文档',`<div class="form">
     <div class="form-row"><div class="field"><label for="fdPath">路径</label><input id="fdPath" value="${esc(doc.path||'docs/')}"></div>
     <div class="field"><label for="fdTitle">标题</label><input id="fdTitle" value="${esc(doc.title||'')}"></div></div>
-    <div class="field"><label for="fdScope">作用域</label><select id="fdScope"><option value="project" ${doc.project_id?'selected':''}>当前项目</option><option value="global" ${id&&!doc.project_id?'selected':''}>全局（所有项目可见）</option></select></div>
+    <div class="field"><label for="fdScope">作用域</label><select id="fdScope"><option value="project" ${!globalDoc?'selected':''}>当前项目</option><option value="global" ${globalDoc?'selected':''}>全局（所有项目可见）</option></select></div>
     <div class="field"><label for="fdContent">内容</label><textarea id="fdContent" rows="12">${esc(doc.content||'')}</textarea></div>
     <div class="inline"><button class="filled-btn" id="fdSave">保存</button>${id?'<button class="text-btn" id="fdDelete">删除</button>':''}<span class="hint" id="fdState"></span></div>
   </div>`);
@@ -947,6 +955,15 @@ document.addEventListener('click',async e=>{
   const btn=e.target.closest('button[data-action]'); if(!btn) return;
   const id=btn.dataset.id, action=btn.dataset.action;
   try{
+    if(action==='delete-project'){
+      const project=(state.projects||[]).find(p=>p.id===id);
+      if(!confirm('软删除项目「'+(project?.name||id)+'」？项目会从列表隐藏，记忆/文档/技能数据仍保留。')) return;
+      await rpc('project_delete',[state.ctx,id]);
+      if(project && (project.path===state.project || project.key===state.project)){
+        state.project=''; localStorage.removeItem('mb_project'); $('#setProject').value='';
+      }
+      await refreshAll(); snack('项目已软删除');
+    }
     if(action==='new-memory'){ await openMemoryForm(null); }
     if(action==='edit-memory'){ await openMemoryForm(id); }
     if(action==='delete-memory'){

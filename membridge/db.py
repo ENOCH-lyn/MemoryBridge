@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS projects (
     path             TEXT NOT NULL,
     conventions_json TEXT NOT NULL DEFAULT '[]',
     created_at       TEXT NOT NULL,
-    updated_at       TEXT NOT NULL
+    updated_at       TEXT NOT NULL,
+    deleted_at       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_projects_path ON projects(path);
 
@@ -213,6 +214,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE projects ADD COLUMN key TEXT")
     conn.execute("UPDATE projects SET key = 'name:' || lower(name) WHERE key IS NULL OR key = ''")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_key ON projects(key)")
+    project_columns = {row[1] for row in conn.execute("PRAGMA table_info(projects)").fetchall()}
+    if "deleted_at" not in project_columns:
+        conn.execute("ALTER TABLE projects ADD COLUMN deleted_at TEXT")
     memory_columns = {row[1] for row in conn.execute("PRAGMA table_info(memories)").fetchall()}
     for column, ddl in {
         "episode_id": "TEXT",

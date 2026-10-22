@@ -10,6 +10,7 @@
 - **同一个 agent**：新会话调用 `agent_bootstrap`，返回人格、称呼、边界、全局指令、项目约定和 `context_version`。
 - **Bootstrap Gate**：没 bootstrap 就调记忆/文档/技能工具，返回 `BOOTSTRAP_REQUIRED`；身份或项目上下文变了，旧 context 返回 `CONTEXT_STALE`。
 - **项目隔离**：按 `.membridge-project.json` / git remote / 目录名建稳定 project；默认检索“当前项目 + 全局”，`scope=all` 才跨项目。
+- **项目软删除**：项目卡片可删除；从 project_list/bootstrap 隐藏，数据仍保留；UI 不再默认塞一个 `demo` 项目。
 - **AI 直接写记忆**：`memory_write` 立即 upsert 为 active，不需要候选/批准；每条必须有稳定 `topic`，决策/教训必须有 `rationale` 和 `conditions`，避免把项目结论写成无场景的全局规则。
 - **AI 直接写身份**：`identity_update` 修改 persona、称呼、边界；语气、口癖、句尾都写在 persona 文本里，没有单独的 `sentence_end` 字段。
 - **AI 直接写文档 / 技能**：`doc_add` 写 Markdown；`skill_install` 安装文件夹技能（`SKILL.md` + scripts/references/assets）；技能默认全局。
@@ -424,7 +425,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 32 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入、默认 admin 强制改密/会话/API token/静态 token 兼容。
+当前 33 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、项目软删除、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入、文档跨项目、默认 admin 强制改密/会话/API token/用户名修改/静态 token 兼容。
 
 ## 文档
 
