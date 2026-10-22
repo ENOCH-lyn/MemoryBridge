@@ -94,6 +94,25 @@ Claude Code / Cursor / DSH 的 MCP 配置（把路径换成你的实际路径）
 
 **第一次对话**：客户端应把 `initialize.instructions` 注入模型；模型会先调 `agent_bootstrap`。如果某个客户端不注入 `instructions`，手动说一句“先调用 agent_bootstrap”即可，Gate 也会在后续工具调用时强制补调。
 
+## AI 为什么会/不会想起来写
+
+MemoryBridge 提供三层提示：
+
+1. `initialize.instructions`：要求每个新会话先 `agent_bootstrap`，持久要求/文档/技能出现时调用写工具。
+2. `bootstrap.next_actions`：列出 `memory_write`、`doc_add`、`skill_install`、`skill_save_file`。
+3. `bootstrap.capture_contract`：列出触发条件、required_tools 和 `before_final_answer`，要求 AI 最终回答前扫描并写入。
+
+但必须说清楚：**MCP server 不能强制模型调用工具**。客户端忽略 instructions 或模型不遵守时，服务端只能拒绝未 bootstrap 的调用，不能替它记忆。更稳的做法是在客户端项目指令里再加一条：
+
+```text
+使用 MemoryBridge MCP：每个新会话先 agent_bootstrap。
+用户说出持久偏好/要求/决策、UI 或输出偏好，或说“记住/保存”时，
+在最终回答前调用 memory_write；文档/技能用 doc_add / skill_install / skill_save_file。
+不要只说“我会记住”，要实际调用工具。
+```
+
+这段可以放进项目的 `AGENTS.md` / `CLAUDE.md` / Codex 项目指令。
+
 ## 项目、全局与“猫娘聊天记忆”
 
 **项目不是 AI 猜的**：MCP proxy 的 `--project` 或 `agent_bootstrap(project_path=...)` 传入项目根目录，服务端生成稳定 key：
@@ -135,6 +154,30 @@ python -m membridge --db .\membridge.db hub --host 0.0.0.0 --port 8787
 $env:MEMBRIDGE_TOKEN = "change-me-to-a-long-random-token"
 python -m membridge serve --remote http://HUB_IP:8787 --token $env:MEMBRIDGE_TOKEN --project .
 ```
+
+**git 只同步项目身份，不同步记忆。** 同一仓库的 `origin` 会让两台电脑在同一个 Hub 上落到同一个 project key；但记忆/文档/技能存在 Hub 的 SQLite/`data/skills`，不在 git 里。两台电脑各自跑本地 Hub = 两套数据库，不会自动合并；必须都连同一个 Hub（或迁移/导出导入 DB）。当前也没有离线写入后的 op log 合并。
+
+## 记忆是怎么注入的
+
+```text
+agent_bootstrap(project_path)
+  ├─ identity               始终返回（全局人格/称呼/边界）
+  ├─ global_directives      始终返回
+  ├─ project                当前项目
+  ├─ global_memories        active，pinned 优先，最多 20 条
+  ├─ project_memories       当前项目 active，pinned/最近优先，最多 20 条
+  ├─ recent_decisions       最近决策
+  ├─ recent_lessons         最近教训
+  └─ capture_contract       什么时候该写
+```
+
+- 不需要先搜索：`global_memories` / `project_memories` 直接在 bootstrap 返回。
+- 超过 20 条的全局/项目记忆不会自动注入，需要 `memory_search` 或 `memory_list`。
+- 文档/技能**不会**自动全文注入；bootstrap 只给计数，AI 需要时调用 `doc_search` / `doc_list` / `skill_list`。
+- 其他项目默认不注入；`memory_search(scope='all')` 或 `memory_list(project_id=...)` 才跨项目。
+- 注入的 `identity` + `global_memories` 是“同一个猫娘”的核心；项目记忆只负责当前上下文。
+
+
 
 MCP 配置（设备 B）：
 

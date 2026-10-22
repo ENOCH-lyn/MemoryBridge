@@ -523,17 +523,28 @@ class AgentSyncService:
                 "Use project_list to see all projects and their memory counts",
                 "Use memory_search(scope='auto') for current project + global; scope='all' for cross-project",
                 "Use memory_list(project_id=...) to batch-read a known project",
-                "Use doc_search / doc_read for project documents",
-                "Use skill_list / skill_get / skill_file for folder-shaped skills",
+                "Use doc_search / doc_read / doc_add for project documents",
+                "Use skill_list / skill_get / skill_file / skill_save_file for folder-shaped skills",
                 "When the user states a durable requirement, call memory_write directly with topic/scope/rationale",
                 "Use identity_update for persona changes; put tone/tic inside persona",
             ],
             "capture_contract": {
                 "mode": "ai_initiated",
-                "when": "when_user_states_durable_requirement",
-                "tool": "memory_write",
+                "triggers": [
+                    "user states a durable preference, requirement, decision or lesson",
+                    "user says remember / save / do not forget",
+                    "user states a stable UI or output preference",
+                    "user asks to create or update a document or skill",
+                ],
+                "required_tools": {
+                    "memory": "memory_write (scope=project by default; global pinned for user-wide facts)",
+                    "document": "doc_add; doc_delete only on explicit delete request",
+                    "skill": "skill_install / skill_save_file; skill_delete only on explicit delete request",
+                    "identity": "identity_update",
+                },
+                "before_final_answer": "Scan for the triggers above; perform the write, then answer.",
                 "approval": "none",
-                "note": "You are the writer; the UI is read-only. Use a stable topic and project scope; use global only for user-wide preferences.",
+                "note": "You and the web console can both write. The server cannot force a model to call a tool; this contract is also returned by bootstrap so the client can enforce its own system prompt.",
             },
         }
 

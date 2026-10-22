@@ -23,6 +23,8 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(result["identity"]["name"], "默认")
         self.assertTrue(result["context_version"].startswith("ctx_"))
         self.assertEqual(result["project"]["name"], "demo")
+        self.assertIn("doc_add", result["capture_contract"]["required_tools"]["document"])
+        self.assertIn("before_final_answer", result["capture_contract"])
         self.assertIn("next_actions", result)
 
     def test_gate_requires_bootstrap(self) -> None:
