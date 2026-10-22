@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import sys
 from pathlib import Path
 
+from .auth import hash_password
 from .db import utcnow
 from .mcp_server import run_stdio
 from .remote import RemoteService, run_hub
@@ -65,6 +67,43 @@ def cmd_bootstrap(args) -> int:
     _print(result, True)
     svc.close()
     return 0
+
+
+def cmd_user(args) -> int:
+    svc = _service(args)
+    try:
+        if args.user_command == "list":
+            rows = svc.conn.execute(
+                "SELECT username, role, must_change_password, created_at, updated_at FROM users ORDER BY username"
+            ).fetchall()
+            _print({"users": [dict(row) for row in rows]}, args.json)
+            return 0
+        username = args.username
+        row = svc.conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        if row is None:
+            print(f"user not found: {username}", file=sys.stderr)
+            return 1
+        password = args.password
+        if not password:
+            password = getpass.getpass(f"new password for {username}: ")
+            confirm = getpass.getpass("confirm new password: ")
+            if password != confirm:
+                print("passwords do not match", file=sys.stderr)
+                return 1
+        if len(password) < 8:
+            print("password must be at least 8 characters", file=sys.stderr)
+            return 1
+        svc.conn.execute(
+            "UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ? WHERE id = ?",
+            (hash_password(password), 1 if args.must_change else 0, utcnow(), row["id"]),
+        )
+        svc.conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (row["id"],))
+        svc._audit("user.password_reset", row["id"], {"username": username, "must_change": bool(args.must_change)})
+        svc.conn.commit()
+        print(f"password updated for {username}; existing sessions invalidated")
+        return 0
+    finally:
+        svc.close()
 
 
 def cmd_persona(args) -> int:
@@ -315,6 +354,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8787)
     p.add_argument("--token", default=None, help="bearer token (or MEMBRIDGE_TOKEN)")
     p.set_defaults(func=cmd_hub)
+
+    p = sub.add_parser("user", help="list users or reset a password")
+    p_sub = p.add_subparsers(dest="user_command", required=True)
+    user_list = p_sub.add_parser("list")
+    user_list.set_defaults(func=cmd_user, user_command="list")
+    user_set = p_sub.add_parser("set-password")
+    user_set.add_argument("--username", default="admin")
+    user_set.add_argument("--password", default=None, help="omit to prompt securely")
+    user_set.add_argument("--must-change", action="store_true", help="force change at next login")
+    user_set.set_defaults(func=cmd_user, user_command="set-password")
 
     p = sub.add_parser("persona", help="show or set the identity/persona")
     p_sub = p.add_subparsers(dest="persona_command", required=True)

@@ -264,6 +264,7 @@ docker compose -f compose.public.yaml up -d --build
 - 会话：HttpOnly + SameSite=Lax + 7 天过期；HTTPS 下加 Secure；改密后使旧会话失效。
 - MCP：API token 只存 SHA-256 hash，明文只在创建时显示一次；可撤销。
 - 登录限速：同一 IP 5 分钟内最多 5 次失败。
+- 忘记密码：停 Hub 后用 `membridge --db ... user set-password --username admin` 重置（交互输入，不进 shell 历史）。
 - 静态 `MEMBRIDGE_TOKEN` 仍可选，公网建议不用，改用 API token。
 - 单端口、单点 SQLite；公网多实例/高并发仍需 op log/TLS 账号体系升级。
 
@@ -274,6 +275,8 @@ docker compose -f compose.public.yaml up -d --build
 ```powershell
 python -m membridge --db .\membridge.db init
 python -m membridge --db .\membridge.db seed
+python -m membridge --db .\membridge.db user list
+python -m membridge --db .\membridge.db user set-password --username admin
 python -m membridge --db .\membridge.db status
 python -m membridge --db .\membridge.db bootstrap --project-path .
 python -m membridge --db .\membridge.db persona set --name 猫娘 --persona "你是猫娘，句尾带喵，称呼用户为主人。"
@@ -317,6 +320,8 @@ membridge/
 ├─ db.py          SQLite schema / 连接 / 时间与 JSON 工具
 ├─ service.py     Identity、Bootstrap、memory_write、文档、文件夹技能、audit
 ├─ webui.html     Hub 自带的 Material 3 可编辑控制台
+├─ static/        本地 CodeMirror 5 静态资源（MIT，无 CDN）
+├─ auth.py        密码哈希、会话、API token
 ├─ mcp_server.py  MCP stdio JSON-RPC、工具 schema、Gate 错误
 ├─ remote.py      HTTP Hub + RemoteService（MCP proxy）
 ├─ cli.py         命令行
