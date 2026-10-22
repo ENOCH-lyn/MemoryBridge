@@ -274,6 +274,13 @@ class HubHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     # GET
     # ------------------------------------------------------------------
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self._send_body(204, b"", "text/plain; charset=utf-8")
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        # Cloudflare/health probes may use HEAD; keep it simple and avoid a 501.
+        self._send_body(200, b"", "text/html; charset=utf-8")
+
     def do_GET(self) -> None:  # noqa: N802
         if self.path in {"/", "/index.html", "/ui"}:
             self._send_body(200, self._webui(), "text/html; charset=utf-8")
@@ -520,7 +527,13 @@ class RemoteService:
 
     def _call(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         payload = json.dumps({"method": name, "args": list(args), "kwargs": kwargs}, ensure_ascii=False).encode("utf-8")
-        headers = {"Content-Type": "application/json; charset=utf-8"}
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            # Cloudflare Browser Integrity Check rejects the default Python UA.
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 MemoryBridge/0.2",
+            "Accept": "application/json",
+        }
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         request = urllib.request.Request(self.base_url + "/rpc", data=payload, headers=headers, method="POST")

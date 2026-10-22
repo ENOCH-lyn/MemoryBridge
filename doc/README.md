@@ -15,6 +15,7 @@
 | 设计 | [MVP 实现说明](设计/MemoryBridge-MVP实现.md) | 数据模型、Bootstrap Gate、检索、MCP 协议与限制 | v0.1 |
 | 验收 | [AI 直接写入 / 隔离 Claude/Codex 验收](验收/MemoryBridge-自动化验收.md) | 隔离 Claude/Codex + 真实 LLM 通过 MCP 写记忆/改身份；项目隔离/全局注入；32 测试 | 2026-10-21 |
 | 审计 | [部署前审计](验收/MemoryBridge-部署前审计.md) | 安全/功能/易用性/UI/部署；Go/No-Go 与公网清单 | 2026-10-22 |
+| 部署 | [公网部署记录 2026-10-22](验收/MemoryBridge-公网部署-2026-10-22.md) | `mcp.enoch.host`、OpenResty、systemd、验证结果与边界 | 2026-10-22 |
 | 计划 | [12 周实施计划](计划/MemoryBridge-12周实施计划.md) | 里程碑、门槛、分工、预算、交付物 | 规划 |
 
 ## 后续拆分计划
