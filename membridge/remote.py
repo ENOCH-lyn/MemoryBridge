@@ -36,6 +36,13 @@ from .service import AgentSyncService, GateError
 DEFAULT_PORT = 8787
 MAX_BODY = 2 * 1024 * 1024
 WEBUI_PATH = Path(__file__).with_name("webui.html")
+STATIC_ROOT = Path(__file__).with_name("static")
+STATIC_TYPES = {
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+}
 COOKIE_NAME = "mb_session"
 SESSION_MAX_AGE = 7 * 24 * 3600
 LOGIN_WINDOW = 300
@@ -61,11 +68,14 @@ ALLOWED_METHODS = {
     "memory_delete",
     "doc_add",
     "doc_list",
+    "doc_delete",
     "doc_search",
     "doc_read",
     "skill_add",
     "skill_install",
     "skill_file",
+    "skill_save_file",
+    "skill_delete",
     "skill_list",
     "skill_get",
     "project_context",
@@ -120,6 +130,19 @@ class HubHandler(BaseHTTPRequestHandler):
             return WEBUI_PATH.read_bytes()
         except OSError:
             return b"MemoryBridge UI file is missing (membridge/webui.html)."
+
+    def _static(self, request_path: str) -> bool:
+        relative = request_path[len("/static/") :]
+        safe = (STATIC_ROOT / relative).resolve()
+        try:
+            safe.relative_to(STATIC_ROOT.resolve())
+        except ValueError:
+            return False
+        if not safe.is_file():
+            return False
+        content_type = STATIC_TYPES.get(safe.suffix.lower(), "application/octet-stream")
+        self._send_body(200, safe.read_bytes(), content_type)
+        return True
 
     # ------------------------------------------------------------------
     # auth helpers
@@ -240,6 +263,8 @@ class HubHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path in {"/", "/index.html", "/ui"}:
             self._send_body(200, self._webui(), "text/html; charset=utf-8")
+            return
+        if self.path.startswith("/static/") and self._static(self.path):
             return
         if self.path == "/favicon.ico":
             self._send_body(204, b"", "image/x-icon")

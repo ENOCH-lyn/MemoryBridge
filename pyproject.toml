@@ -19,4 +19,9 @@ mb = "membridge.cli:main"
 packages = ["membridge"]
 
 [tool.setuptools.package-data]
-membridge = ["webui.html"]
+membridge = [
+    "webui.html",
+    "static/codemirror/LICENSE",
+    "static/codemirror/lib/*",
+    "static/codemirror/mode/*",
+]

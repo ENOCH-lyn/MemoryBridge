@@ -2,8 +2,8 @@
 
 忆桥是一个**自部署的 Agent 身份 / 记忆 / 能力同步器**：任何支持 MCP 的客户端，只要连上同一个 MemoryBridge，agent 在每次新会话先 `agent_bootstrap`，就能拿回同一份人格、全局指令、项目上下文、记忆、文档和技能。
 
-> **当前状态：AI 维护、UI 只读的 MVP（MCP stdio + HTTP Hub + Material 3 控制台 + 文件夹技能）**。
-> 记忆/文档/技能/身份全部由 agent 通过 MCP **直接写入 active**；没有候选队列、没有人工批准、UI 不提供编辑。向量检索、op log/冲突合并、TLS/账号体系是下一阶段。
+> **当前状态：AI 可直接维护，UI 也可编辑的 MVP（MCP stdio + HTTP Hub + Material 3 控制台 + 文件夹技能 + 账号鉴权）**。
+> agent 可通过 MCP 直接写入；UI 也能新建/编辑/删除记忆、文档、技能和身份。没有候选队列、没有人工审批。向量检索、op log/冲突合并是下一阶段。
 
 ## 现在能做到什么
 
@@ -12,11 +12,11 @@
 - **项目隔离**：按 `.membridge-project.json` / git remote / 目录名建稳定 project；默认检索“当前项目 + 全局”，`scope=all` 才跨项目。
 - **AI 直接写记忆**：`memory_write` 立即 upsert 为 active，不需要候选/批准；每条必须有稳定 `topic`，决策/教训必须有 `rationale` 和 `conditions`，避免把项目结论写成无场景的全局规则。
 - **AI 直接写身份**：`identity_update` 修改 persona、称呼、边界；语气、口癖、句尾都写在 persona 文本里，没有单独的 `sentence_end` 字段。
-- **AI 直接写文档 / 技能**：`doc_add` 写 Markdown；`skill_install` 安装文件夹技能（`SKILL.md` + scripts/references/assets）；UI 只显示。
-- **Web 控制台（只读）**：概览、记忆、文档、技能、身份、活动（audit log）、连接；没有采集/候选/编辑按钮。
+- **AI 直接写文档 / 技能**：`doc_add` 写 Markdown；`skill_install` 安装文件夹技能（`SKILL.md` + scripts/references/assets）。
+- **Web 控制台（可编辑）**：概览、记忆、文档、技能、身份、活动（audit log）、连接；支持新建/编辑/删除、文件夹上传、技能文件树 + CodeMirror 编辑。
 - **可审计**：所有写入落 `audit_log`，UI「活动」和 `audit_list` 可回看。
 - **跨设备**：一台设备/服务器跑 `hub`，其他设备用 `serve --remote` 做本地 MCP proxy；连的是同一份身份与记忆。
-- **零外部依赖**：Python 3.11+ 标准库 + SQLite；单文件数据库，可拷贝、可导出。
+- **零 Python 外部依赖**：Python 3.11+ 标准库 + SQLite；单文件数据库，可拷贝、可导出；UI 内置 CodeMirror 5（MIT）静态资源，无 CDN。
 - **MCP 协议**：`initialize` 带 instructions；工具带描述与 annotations；另有 `memory://identity` 资源和 `recall_for_task` prompt。
 
 ## 60 秒跑起来
@@ -160,7 +160,7 @@ MCP 配置（设备 B）：
 
 说明：
 
-- Hub 提供 `GET /`（Web 控制台）、`POST /rpc`、`GET /health`、`GET /export`；除首页/健康检查外都要 Bearer token。
+- Hub 提供 `GET /`（Web 控制台）、`POST /rpc`、`GET /health`、`GET /export`、`/login`、`/tokens`；除首页/健康检查外，UI 用登录会话，MCP 用 API token 或静态 `MEMBRIDGE_TOKEN`。
 - 跨公网建议放在 Tailscale / Cloudflare Tunnel / Caddy TLS 之后，不要直接裸奔 `0.0.0.0:8787`。
 - 项目 id 不再按绝对路径哈希：有 `origin` remote 时用 remote（如 `git:github.com/enoch-lyn/memorybridge`），否则用目录名；同一仓库在不同电脑上会落到同一个 project。
 - 当前是“中心数据库”，没有 op log/冲突副本；并发写同一记忆时仍是最后写入生效。下一阶段做增量同步与冲突队列。
@@ -180,7 +180,7 @@ admin / admin
 
 首次登录会强制改密；改密后重新建立会话。控制台默认项目是 `demo`；在「连接」里改成你自己的项目路径即可。数据库在 `data/membridge-local.db`，删除即可重置。
 
-内容不是在这里录入的：agent 连上 MCP 后，在你说出持久要求时直接调用 `memory_write` / `doc_add` / `skill_install` / `identity_update`；UI 只读。
+内容既可由 agent 在你说出持久要求时通过 MCP 直接写入，也可以在这个控制台里新建/编辑/删除；UI 不再是只读。
 
 ## Web 控制台
 
@@ -196,13 +196,17 @@ http://HUB_IP:8787/
 
 ![MemoryBridge Web 控制台](doc/assets/webui.png)
 
-- **概览**：身份、活跃记忆、文档/技能数、写入模式、AI 写入契约、最近写入。
-- **记忆**：只读；显示 type、project/global、topic、rationale、conditions、证据。
-- **文档**：只读；AI 通过 `doc_add` 维护。
-- **技能**：只读；AI 通过 `skill_install` 安装文件夹，可查看目录和文件。
-- **身份**：只读；AI 通过 `identity_update` 维护，口癖写在 persona 里。
+技能文件夹的目录树 + CodeMirror 编辑：
+
+![MemoryBridge 技能编辑](doc/assets/skills.png)
+
+- **概览**：身份、记忆/项目/文档/技能计数、项目上下文、最近写入、新建快捷入口。
+- **记忆**：新建/编辑/删除；显示 type、project/global、topic、rationale、conditions、证据。
+- **文档**：新建/编辑/删除；CodeMirror 编辑 Markdown。
+- **技能**：新建/上传文件夹/删除；左侧目录树，右侧 CodeMirror 编辑并保存单个文件。
+- **身份**：编辑名字、称呼、persona、边界；口癖写在 persona 里。
 - **活动**：audit log 中的 memory/doc/skill/identity 写入记录。
-- **连接**：token、项目路径、MCP 配置片段、JSON 导出、健康检查。
+- **连接**：登录态、项目路径、MCP 配置片段、JSON 导出、健康检查、API token、修改密码。
 
 页面是单文件 HTML/CSS/JS，由 Hub 直接提供，不需要 Node 构建，也不依赖外部 CDN。
 
@@ -312,7 +316,7 @@ python -m membridge serve --remote http://127.0.0.1:8787 --token $env:MEMBRIDGE_
 membridge/
 ├─ db.py          SQLite schema / 连接 / 时间与 JSON 工具
 ├─ service.py     Identity、Bootstrap、memory_write、文档、文件夹技能、audit
-├─ webui.html     Hub 自带的 Material 3 只读控制台
+├─ webui.html     Hub 自带的 Material 3 可编辑控制台
 ├─ mcp_server.py  MCP stdio JSON-RPC、工具 schema、Gate 错误
 ├─ remote.py      HTTP Hub + RemoteService（MCP proxy）
 ├─ cli.py         命令行

@@ -26,7 +26,8 @@ INSTRUCTIONS = (
     "If you skip bootstrap, those tools return BOOTSTRAP_REQUIRED. "
     "Use `project_list` to discover projects; `memory_search(scope='auto')` searches current project + global, "
     "while `scope='all'` searches across all projects. `memory_list(project_id=...)` batch-reads a known project. "
-    "The UI is READ-ONLY. You are the writer: when the user states a durable requirement, decision, "
+    "The web console is also editable (memory/document/skill/identity CRUD), but you remain responsible "
+    "for maintaining durable context: when the user states a durable requirement, decision, "
     "lesson or preference, call `memory_write` directly with a stable `topic`, the right `scope` "
     "(project by default; global only for user-wide preferences), and a `rationale` plus `conditions`. "
     "Set `pinned=true` for core user-wide facts that must be auto-injected in every future conversation. "
@@ -314,6 +315,13 @@ TOOLS: list[dict[str, Any]] = [
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },
     {
+        "name": "doc_delete",
+        "title": "Delete document",
+        "description": "Delete a document by document_id (or path). Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX, "document_id": {"type": "string"}}, ["context_version", "document_id"]),
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
+    },
+    {
         "name": "skill_file",
         "title": "Read skill file",
         "description": "Read one file from a skill folder (scripts/references/SKILL.md). Requires bootstrap.",
@@ -322,6 +330,23 @@ TOOLS: list[dict[str, Any]] = [
             ["context_version", "skill_id", "path"],
         ),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "skill_save_file",
+        "title": "Save skill file",
+        "description": "Edit one text file inside a skill folder. Requires bootstrap.",
+        "inputSchema": _schema(
+            {"context_version": CTX, "skill_id": {"type": "string"}, "path": {"type": "string"}, "content": {"type": "string"}},
+            ["context_version", "skill_id", "path", "content"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "skill_delete",
+        "title": "Delete skill",
+        "description": "Delete a skill folder and its DB row. Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX, "skill_id": {"type": "string"}}, ["context_version", "skill_id"]),
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
     },
     {
         "name": "project_list",
@@ -481,6 +506,8 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 project_id=args.get("project_id"),
             )
         )
+    if name == "doc_delete":
+        return _ok(service.doc_delete(ctx, args["document_id"]))
     if name == "skill_list":
         return _ok(service.skill_list(ctx, project_id=args.get("project_id"), query=args.get("query")))
     if name == "skill_get":
@@ -507,6 +534,10 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
         )
     if name == "skill_file":
         return _ok(service.skill_file(ctx, args["skill_id"], args["path"]))
+    if name == "skill_save_file":
+        return _ok(service.skill_save_file(ctx, args["skill_id"], args["path"], args["content"]))
+    if name == "skill_delete":
+        return _ok(service.skill_delete(ctx, args["skill_id"]))
     if name == "project_list":
         return _ok(service.project_list())
     if name == "project_context":

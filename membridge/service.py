@@ -1094,6 +1094,20 @@ class AgentSyncService:
             "content": row["content"],
         }
 
+    def doc_delete(self, context_version: str, document_id: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+        if row is None:
+            row = self.conn.execute("SELECT * FROM documents WHERE path = ?", (document_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown document: {document_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("document is outside the current project scope")
+        self.conn.execute("DELETE FROM documents WHERE id = ?", (row["id"],))
+        self._audit("doc.delete", row["id"], {"path": row["path"], "project_id": row["project_id"]})
+        self.conn.commit()
+        return {"document_id": row["id"], "deleted": True}
+
     # ------------------------------------------------------------------
     # skills
     # ------------------------------------------------------------------
@@ -1390,6 +1404,52 @@ class AgentSyncService:
         if target.stat().st_size > 1024 * 1024:
             raise ValueError("skill file too large to return")
         return {"skill_id": skill_id, "path": safe, "content": target.read_text(encoding="utf-8")}
+
+    def skill_save_file(
+        self,
+        context_version: str,
+        skill_id: str,
+        path: str,
+        content: str,
+    ) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown skill: {skill_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("skill is outside the current project scope")
+        files: dict[str, str] = {}
+        for item in self._skill_files(skill_id):
+            target = self._skill_dir(skill_id) / item["path"]
+            try:
+                files[item["path"]] = target.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+        safe = self._safe_skill_path(path)
+        files[safe] = content
+        result = self.skill_install(
+            context_version,
+            files=files,
+            name=row["name"],
+            project_id=row["project_id"],
+            status=row["status"],
+        )
+        return result
+
+    def skill_delete(self, context_version: str, skill_id: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown skill: {skill_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("skill is outside the current project scope")
+        self.conn.execute("DELETE FROM skills WHERE id = ?", (skill_id,))
+        self._audit("skill.delete", skill_id, {"project_id": row["project_id"], "name": row["name"]})
+        self.conn.commit()
+        target = self._skill_dir(skill_id)
+        if target.exists():
+            shutil.rmtree(target)
+        return {"skill_id": skill_id, "deleted": True}
 
     # ------------------------------------------------------------------
     # project context / status / export

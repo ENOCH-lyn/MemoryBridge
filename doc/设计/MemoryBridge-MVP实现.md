@@ -105,14 +105,14 @@ memory_write(ctx, content, topic, type, scope="project",
   └─ audit: memory.write {topic, project_id, updated}
 ```
 
-- **没有候选队列、没有人工批准**；UI 只读。AI 在用户提出持久要求时主动写。
+- **没有候选队列、没有人工批准**；AI 在用户提出持久要求时主动写，UI 也可直接编辑/删除。
 - `topic` 是治理核心：后续修正更新同一条，不堆近似重复。
 - `scope` 防止“A 项目用 SQLite”被写成所有项目都必须用 SQLite。
 - `rationale` 记录为什么；`conditions` 记录适用边界（环境/阶段/并发/团队规范）。
 - `pinned=true` 的记忆优先进入 bootstrap；global pinned 用于“主人喜欢黑色”这类跨项目核心事实。
 - 身份用 `identity_update`；文档用 `doc_add`；技能用 `skill_install`/`skill_file`。
 - `memory_ingest` / 服务端 LLM 抽取已移除；AI 客户端自己判断何时调用 `memory_write`。
-- **技能是文件夹**：`SKILL.md`（YAML frontmatter + 正文）+ `scripts/`、`references/`、`assets/`。Hub 落盘到 `data/skills/<skill_id>/`，DB 只存元数据与文件清单；`skill_install` / `skill_file` 读写整个包，UI 只读查看。
+- **技能是文件夹**：`SKILL.md`（YAML frontmatter + 正文）+ `scripts/`、`references/`、`assets/`。Hub 落盘到 `data/skills/<skill_id>/`，DB 只存元数据与文件清单；`skill_install` / `skill_save_file` / `skill_delete` 读写整个包，UI 提供目录树 + CodeMirror 编辑。
 
 ## 5. 检索
 
@@ -133,17 +133,17 @@ memory_write(ctx, content, topic, type, scope="project",
 
 ### 6.2 Web 控制台
 
-Hub 在 `GET /` 直接返回 `webui.html`（单文件 HTML/CSS/JS，无构建、无 CDN）。界面按 Material 3 设计：导航 rail、tonal surface、filled/tonal/outlined 按钮、明暗主题、snackbar/dialog；不是营销落地页，而是操作控制台。
+Hub 在 `GET /` 返回 `webui.html`（单文件 HTML/CSS/JS + 本地 CodeMirror 静态资源，无构建、无 CDN）。界面按 Material 3 设计：导航 rail、tonal surface、filled/tonal/outlined 按钮、明暗主题、snackbar/dialog；不是营销落地页，而是操作控制台。
 
-- 概览：身份、活跃记忆、文档/技能数、LLM 状态、AI 写入契约、最近写入。
-- 记忆：只读；显示 type、project/global、topic、rationale、conditions、证据。
-- 文档/技能：只读列表；技能可查看目录与单文件。
-- 身份：只读；AI 通过 `identity_update` 改 persona/address/boundaries。
+- 概览：身份、记忆/项目/文档/技能计数、项目上下文、最近写入、快捷新建。
+- 记忆：新建/编辑/删除；显示 type、project/global、topic、rationale、conditions、证据。
+- 文档：新建/编辑/删除；CodeMirror 编辑 Markdown。
+- 技能：新建/上传文件夹/删除；目录树 + CodeMirror 编辑/保存单文件。
+- 身份：可编辑 name/address/persona/boundaries；口癖写在 persona 里。
 - 活动：显示 memory/doc/skill/identity 的 audit 写入。
-- 连接：token、项目路径、MCP 配置、导出、健康检查。
-- 连接：token、项目路径、MCP 配置片段、`/export` 下载、健康检查。
+- 连接：登录/会话、项目路径、MCP 配置、API token、修改密码、导出、健康检查。
 
-浏览器通过同源 `POST /rpc` 调用 Hub，token 存在 `localStorage`；页面本身不含数据，未带 token 只能看到连接页。
+浏览器通过同源 `POST /rpc` 调用 Hub；未登录会先走 `/login`，会话 Cookie 为 HttpOnly + SameSite=Lax；API token 只用于 MCP proxy。
 
 ### 6.1 远程模式（Hub + 本地 Proxy）
 

@@ -114,6 +114,14 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(skills["count"], 1)
         skill = self.svc.skill_get(ctx, skills["items"][0]["id"])
         self.assertEqual(len(skill["steps"]), 2)
+        self.svc.skill_save_file(ctx, skill["id"], "SKILL.md", skill["skill_md"] + "\n- edited\n")
+        self.assertIn("edited", self.svc.skill_get(ctx, skill["id"])["skill_md"])
+        self.svc.skill_delete(ctx, skill["id"])
+        self.assertEqual(self.svc.skill_list(ctx)["count"], 0)
+
+        document_id = docs["items"][0]["document_id"]
+        self.svc.doc_delete(ctx, document_id)
+        self.assertEqual(self.svc.doc_list(ctx)["count"], 0)
 
     def test_feedback_updates_confidence(self) -> None:
         ctx = self.svc.bootstrap()["context_version"]

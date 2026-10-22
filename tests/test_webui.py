@@ -39,6 +39,9 @@ class WebUITest(unittest.TestCase):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health", timeout=5) as response:
             data = json.loads(response.read().decode("utf-8"))
             self.assertTrue(data["ok"])
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/static/codemirror/lib/codemirror.js", timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn(b"CodeMirror", response.read()[:400])
 
 
 if __name__ == "__main__":

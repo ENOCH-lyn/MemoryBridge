@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>忆桥 MemoryBridge</title>
+<link rel="stylesheet" href="/static/codemirror/lib/codemirror.css">
 <style>
 /* Material 3-inspired tokens. Seed: calm teal. Light is the default. */
 :root{
@@ -98,9 +99,13 @@ a{color:var(--md-primary)}
 .card.outlined{background:var(--md-surface);border:1px solid var(--md-outline-variant)}
 .card.elevated{background:var(--md-surface-container-lowest);box-shadow:0 1px 2px var(--md-shadow),0 2px 8px var(--md-shadow)}
 .section-title{font-size:16px;line-height:24px;font-weight:500;margin:0 0 4px}
-.section-sub{font-size:12px;line-height:16px;color:var(--md-on-surface-variant);margin:0 0 16px}
+.section-sub{display:none}
 .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
 .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.overview-grid{align-items:start}
+.hero-main{display:flex;align-items:center;gap:16px}
+.hero-avatar{width:56px;height:56px;border-radius:18px;background:var(--md-primary-container);color:var(--md-on-primary-container);display:grid;place-items:center;font-size:24px;font-weight:700;flex:0 0 auto}
 .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:28px;margin-bottom:16px}
 .eyebrow{font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--md-on-surface-variant);font-weight:500}
 .hero h2{font-size:32px;line-height:40px;font-weight:400;margin:6px 0 4px;letter-spacing:-.2px}
@@ -153,6 +158,21 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 .dialog-head{display:flex;justify-content:space-between;align-items:center;padding:20px 24px 4px}
 .dialog-head h2{font-size:20px;line-height:26px;font-weight:500;margin:0}
 .dialog-body{padding:12px 24px 24px;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:20px}
+#dialog.editor{max-width:1100px;width:calc(100% - 40px)}
+#dialog.editor .dialog-body{white-space:normal;max-height:78vh}
+#dialog.editor .form-row{grid-template-columns:1fr 1fr}
+.skill-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:12px;height:min(68vh,620px)}
+.skill-tree{border:1px solid var(--md-outline-variant);border-radius:var(--radius-s);padding:8px;overflow:auto;font-size:13px}
+.skill-tree ul{list-style:none;margin:0;padding-left:14px}
+.skill-tree>ul{padding-left:0}
+.skill-tree li{margin:2px 0}
+.skill-tree button{border:0;background:none;color:inherit;font:inherit;text-align:left;padding:4px 6px;border-radius:6px;width:100%;cursor:pointer}
+.skill-tree button:hover{background:var(--md-surface-container-highest)}
+.skill-tree button.active{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.skill-tree .folder{color:var(--md-on-surface-variant);padding:4px 6px}
+.skill-editor{display:flex;flex-direction:column;min-width:0;min-height:0}
+.skill-editor .CodeMirror{height:calc(68vh - 110px);min-height:260px;font-size:13px;border-radius:var(--radius-s);border:1px solid var(--md-outline-variant)}
+.skill-path{font-family:var(--mono);font-size:12px;color:var(--md-on-surface-variant);margin-bottom:6px}
 .snackbar{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);opacity:0;pointer-events:none;
   background:var(--md-inverse-surface);color:var(--md-inverse-on-surface);border-radius:8px;padding:12px 18px;
   font-size:13px;z-index:60;box-shadow:0 2px 8px var(--md-shadow);transition:.18s;max-width:min(560px,90vw)}
@@ -169,7 +189,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 .auth-card h2{font-size:22px;line-height:28px;font-weight:500;margin:0 0 4px}
 .auth-card .hint{margin:0 0 18px}
 .auth-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}
-@media(max-width:1080px){.grid-3{grid-template-columns:1fr 1fr}.grid-2{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}
+@media(max-width:1080px){.grid-3,.grid-4{grid-template-columns:1fr 1fr}.grid-2{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}
 @media(max-width:760px){
   .app{grid-template-columns:1fr;padding-bottom:76px}
   .rail{position:fixed;left:0;right:0;bottom:0;top:auto;height:72px;flex-direction:row;justify-content:space-around;
@@ -181,7 +201,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
   .content{padding:4px 16px 96px}
   .hero{padding:20px;align-items:flex-start;flex-direction:column}
   .hero h2{font-size:28px;line-height:34px}
-  .grid-3{grid-template-columns:1fr}
+  .grid-3,.grid-4{grid-template-columns:1fr}
   .fab{right:16px;bottom:88px}
 }
 </style>
@@ -230,7 +250,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 
   <main class="main">
     <header class="topbar">
-      <div><h1 id="pageTitle">概览</h1><p class="sub" id="pageSub">同一个 agent，换设备不重来</p></div>
+      <div><h1 id="pageTitle">概览</h1><p class="sub" id="pageSub"></p></div>
       <div class="top-actions">
         <span class="chip" id="ctxBadge">未 bootstrap</span>
         <button class="icon-btn" id="refreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-1.76-4.24L13 11h7V4l-2.35 2.35z"/></svg></button>
@@ -241,43 +261,35 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
     <div class="content">
       <section class="tab active" id="tab-overview">
         <div class="hero card elevated">
-          <div>
-            <div class="eyebrow">当前身份</div>
-            <h2 id="ovName">—</h2>
-            <p id="ovPersona">连接 Hub 后显示人格与记忆状态。</p>
+          <div class="hero-main">
+            <div class="hero-avatar">M</div>
+            <div>
+              <h2 id="ovName">—</h2>
+              <p id="ovPersona">登录后显示人格与记忆状态。</p>
+            </div>
           </div>
           <div class="chip-row">
-            <button class="tonal-btn" data-tab="identity">查看身份</button>
-            <button class="outlined-btn" data-tab="settings">连接设置</button>
+            <button class="filled-btn" data-action="new-memory">新建记忆</button>
+            <button class="tonal-btn" data-action="new-doc">新建文档</button>
+            <button class="tonal-btn" data-action="upload-skill">上传技能</button>
+            <button class="outlined-btn" data-tab="identity">编辑身份</button>
           </div>
         </div>
-        <div class="grid-3">
-          <div class="card stat"><div class="eyebrow">活跃记忆</div><div class="num" id="ovMemories">0</div><div class="meta">项目 <span id="ovProjects">0</span> · 文档 <span id="ovDocs">0</span> · 技能 <span id="ovSkills">0</span></div></div>
-          <div class="card stat"><div class="eyebrow">写入模式</div><div class="num" id="ovLLM">AI 直接</div><div class="meta" id="ovLLMModel">memory_write · 无候选</div></div>
-          <div class="card stat"><div class="eyebrow">上下文</div><div class="num" id="ovCtx">—</div><div class="meta" id="ovCtxShort">身份 + 指令 + 项目约定</div></div>
+        <div class="grid-4">
+          <div class="card stat"><div class="eyebrow">记忆</div><div class="num" id="ovMemories">0</div></div>
+          <div class="card stat"><div class="eyebrow">项目</div><div class="num" id="ovProjects">0</div></div>
+          <div class="card stat"><div class="eyebrow">文档</div><div class="num" id="ovDocs">0</div></div>
+          <div class="card stat"><div class="eyebrow">技能</div><div class="num" id="ovSkills">0</div></div>
         </div>
-        <div class="grid-2" style="margin-top:16px">
+        <div class="grid-2 overview-grid" style="margin-top:16px">
           <div class="card">
-            <h2 class="section-title">AI 写入契约</h2>
-            <p class="section-sub">所有内容由 agent 通过 MCP 直接写入；没有候选、没有批准、UI 不提供编辑。</p>
-            <div class="code">memory_write(topic="decision.storage",
-  scope="project", rationale="…", conditions="…")
-doc_add(path="docs/adr.md", content="…")
-skill_install(files={"SKILL.md": "…"})
-identity_update(persona="猫娘，句尾带喵…")</div>
+            <div class="inline" style="justify-content:space-between"><h2 class="section-title">项目</h2><button class="text-btn" data-tab="settings">管理连接</button></div>
+            <div class="hint" id="ovProjectCounts">—</div>
+            <div class="list" id="ovProjectsList"><div class="empty">还没有项目</div></div>
           </div>
           <div class="card">
-            <h2 class="section-title">最近写入</h2>
-            <p class="section-sub">来自 audit log，只读。</p>
+            <div class="inline" style="justify-content:space-between"><h2 class="section-title">最近写入</h2><button class="text-btn" data-tab="activity">全部</button></div>
             <div class="list" id="ovActivityList"><div class="empty">还没有写入</div></div>
-          </div>
-        </div>
-        <div class="card outlined" style="margin-top:16px">
-          <h2 class="section-title">第一次使用</h2>
-          <div class="grid-3" style="margin-top:12px">
-            <div><div class="eyebrow">01 · 连接</div><p class="hint">Hub 在本机无 token 模式会直接连上；云端模式需填 Bearer token。</p></div>
-            <div><div class="eyebrow">02 · AI 写入</div><p class="hint">AI 在你说出持久要求时直接调用 <span class="code" style="display:inline;padding:2px 5px">memory_write</span> / <span class="code" style="display:inline;padding:2px 5px">doc_add</span> / <span class="code" style="display:inline;padding:2px 5px">skill_install</span>；UI 只负责查看。</p></div>
-            <div><div class="eyebrow">03 · 在 agent 里用</div><p class="hint">MCP 客户端连 Hub 的本地 proxy；新会话先调用 agent_bootstrap。</p></div>
           </div>
         </div>
       </section>
@@ -293,8 +305,8 @@ identity_update(persona="猫娘，句尾带喵…")</div>
       <section class="tab" id="tab-memory">
         <div class="card">
           <div class="inline" style="justify-content:space-between;align-items:flex-end">
-            <div><h2 class="section-title">记忆</h2><p class="section-sub">只显示 active；所有写入由 AI 通过 MCP 完成，UI 只读。</p></div>
-            <div class="inline"><div class="field" style="width:280px"><label for="memQuery">搜索</label><input id="memQuery" placeholder="搜索记忆……"></div><button class="tonal-btn" id="memSearch">搜索</button><button class="text-btn" id="memReload">全部</button></div>
+            <div><h2 class="section-title">记忆</h2></div>
+            <div class="inline"><button class="filled-btn" data-action="new-memory">新建记忆</button><div class="field" style="width:240px"><label for="memQuery">搜索</label><input id="memQuery" placeholder="搜索记忆……"></div><button class="tonal-btn" id="memSearch">搜索</button><button class="text-btn" id="memReload">全部</button></div>
           </div>
           <div class="list" id="memList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
@@ -302,14 +314,14 @@ identity_update(persona="猫娘，句尾带喵…")</div>
 
       <section class="tab" id="tab-docs">
         <div class="card">
-          <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">文档</h2><p class="section-sub">AI 通过 `doc_add` 维护；UI 只读。文档按项目挂载，可被检索和引用。</p></div><button class="text-btn" id="docReload">刷新</button></div>
+          <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">文档</h2></div><div class="inline"><button class="filled-btn" data-action="new-doc">新建文档</button><button class="text-btn" id="docReload">刷新</button></div></div>
           <div class="list" id="docList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
       </section>
 
       <section class="tab" id="tab-skills">
         <div class="card">
-          <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">技能文件夹</h2><p class="section-sub">AI 通过 `skill_install` 安装/更新；每个 skill 是 SKILL.md + scripts/references/assets，UI 只读。</p></div><button class="text-btn" id="skillReload">刷新</button></div>
+          <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">技能文件夹</h2></div><div class="inline"><button class="filled-btn" data-action="new-skill">新建技能</button><button class="tonal-btn" data-action="upload-skill">上传文件夹</button><button class="text-btn" id="skillReload">刷新</button><input type="file" id="skillFolder" webkitdirectory multiple hidden></div></div>
           <div class="list" id="skillList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
       </section>
@@ -317,26 +329,17 @@ identity_update(persona="猫娘，句尾带喵…")</div>
       <section class="tab" id="tab-identity">
         <div class="card">
           <div class="inline" style="justify-content:space-between;align-items:flex-start">
-            <div><h2 class="section-title">身份 / 人格</h2><p class="section-sub">AI 通过 `identity_update` 维护；口癖、语气、称呼都写在 persona 里，不单独存字段。</p></div>
+            <h2 class="section-title">身份 / 人格</h2>
             <span class="chip assist" id="idVersion">v—</span>
           </div>
-          <div class="grid-2" style="margin-top:18px">
-            <div class="card outlined">
-              <div class="eyebrow">名字</div><div class="stat"><div class="num" id="idNameText">—</div></div>
-              <div class="eyebrow" style="margin-top:14px">人格 / Persona</div>
-              <p class="body" id="idPersonaText" style="white-space:pre-wrap"></p>
-              <div class="eyebrow" style="margin-top:14px">边界</div>
-              <div class="list" id="idBoundariesText"></div>
+          <div class="form" style="margin-top:16px">
+            <div class="form-row">
+              <div class="field"><label for="idName">名字</label><input id="idName" placeholder="默认"></div>
+              <div class="field"><label for="idAddress">称呼</label><input id="idAddress" placeholder="主人"></div>
             </div>
-            <div class="card outlined">
-              <div class="eyebrow">写入契约</div>
-              <p class="hint" style="margin-top:8px">当你说出持久要求时，agent 应该直接调用 <span class="code" style="display:inline;padding:2px 5px">identity_update</span>，例如“以后叫我主人，句尾带喵”。</p>
-              <div class="code">identity_update(
-  persona="猫娘，句尾带喵，称呼用户为主人",
-  address_user="主人"
-)</div>
-              <p class="hint">不需要在 UI 点保存，也不需要候选/批准。</p>
-            </div>
+            <div class="field"><label for="idPersona">人格 / Persona</label><textarea id="idPersona" rows="8" placeholder="猫娘，句尾带喵，称呼用户为主人。"></textarea></div>
+            <div class="field"><label for="idBoundaries">边界（每行一条）</label><textarea id="idBoundaries" rows="3" placeholder="不伪造事实"></textarea></div>
+            <div class="inline"><button class="filled-btn" id="idSave">保存身份</button><span class="hint" id="idState"></span></div>
           </div>
         </div>
       </section>
@@ -378,6 +381,17 @@ identity_update(persona="猫娘，句尾带喵…")</div>
             <div class="list" id="tokenList"><div class="empty">加载中…</div></div>
           </div>
         </div>
+        <div class="card" style="margin-top:16px">
+          <h2 class="section-title">修改密码</h2>
+          <div class="form" style="margin-top:12px">
+            <div class="form-row">
+              <div class="field"><label for="secCurrent">当前密码</label><input id="secCurrent" type="password" autocomplete="current-password"></div>
+              <div class="field"><label for="secNew">新密码（至少 8 位）</label><input id="secNew" type="password" autocomplete="new-password"></div>
+              <div class="field"><label for="secConfirm">确认新密码</label><input id="secConfirm" type="password" autocomplete="new-password"></div>
+            </div>
+            <div class="inline"><button class="filled-btn" id="secSave">修改密码</button><span class="hint" id="secState"></span></div>
+          </div>
+        </div>
       </section>
     </div>
   </main>
@@ -386,6 +400,14 @@ identity_update(persona="猫娘，句尾带喵…")</div>
 <div class="snackbar" id="snackbar" role="status"></div>
 <dialog id="dialog"><div class="dialog-head"><h2 id="dialogTitle">详情</h2><button class="icon-btn small" id="dialogClose" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M18.3 5.71L12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.3 19.71 2.89 18.3 9.17 12 2.89 5.71 4.3 4.29l6.29 6.3 6.3-6.3 1.41 1.42z"/></svg></button></div><div class="dialog-body" id="dialogBody"></div></dialog>
 
+<script src="/static/codemirror/lib/codemirror.js"></script>
+<script src="/static/codemirror/mode/markdown.js"></script>
+<script src="/static/codemirror/mode/javascript.js"></script>
+<script src="/static/codemirror/mode/python.js"></script>
+<script src="/static/codemirror/mode/shell.js"></script>
+<script src="/static/codemirror/mode/xml.js"></script>
+<script src="/static/codemirror/mode/css.js"></script>
+<script src="/static/codemirror/mode/yaml.js"></script>
 <script>
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => Array.from(root.querySelectorAll(s));
@@ -518,7 +540,7 @@ function mcpSnippet(){
 }
 async function bootstrap(){
   const data=await rpc('bootstrap',[],{project_path:state.project||null,client:'web'});
-  state.ctx=data.context_version; state.identity=data.identity; state.available=data.available||null;
+  state.ctx=data.context_version; state.identity=data.identity; state.available=data.available||null; state.projects=data.projects||[]; state.globalMemories=data.global_memories||[]; state.projectMemories=data.project_memories||[];
   $('#ctxBadge').textContent='ctx '+state.ctx.slice(4,12);
   $('#ctxBadge').className='chip ok';
   renderOverview();
@@ -534,7 +556,7 @@ async function refreshStatus(){
 }
 async function refreshAll(){
   try{
-    await health(); await refreshStatus(); await bootstrap(); await loadTab(state.tab); snack('已连接');
+    await health(); await refreshStatus(); await bootstrap(); await loadTab(state.tab);
   }catch(e){
     if(e.status===401 || e.code==='PASSWORD_CHANGE_REQUIRED'){ showAuth(e.code==='PASSWORD_CHANGE_REQUIRED'?'password':'login'); }
     else snack(String(e.message),'err');
@@ -545,7 +567,7 @@ function switchTab(tab, updateHash=true){
   state.tab=tab;
   $$('#nav .rail-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   $$('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+tab));
-  $('#pageTitle').textContent=titles[tab][0]; $('#pageSub').textContent=titles[tab][1];
+  $('#pageTitle').textContent=titles[tab][0]; $('#pageSub').textContent='';
   if(updateHash && location.hash !== '#'+tab) history.replaceState(null,'','#'+tab);
   loadTab(tab);
 }
@@ -559,21 +581,21 @@ function renderOverview(){
   $('#ovDocs').textContent=a.documents??c.documents??0;
   $('#ovSkills').textContent=a.skills??c.skills??0;
   $('#ovProjects').textContent=a.projects??'—';
-  $('#ovCtx').textContent=state.ctx?'已绑定':'—';
-  $('#ovCtxShort').textContent=state.ctx?state.ctx:'身份 + 指令 + 项目约定';
   const badgeMem=$('#badgeMem');
   const active=a.memories??c.memories_active??0;
   badgeMem.hidden=!active; badgeMem.textContent=active;
-  $('#ovLLM').textContent='AI 直接';
-  $('#ovLLMModel').textContent='memory_write · 无候选';  $('#ctxBadge').textContent=state.ctx?'ctx '+state.ctx.slice(4,12):'未 bootstrap';
+  const projects=state.projects||[];
+  $('#ovProjectsList').innerHTML=projects.length?projects.slice(0,6).map(p=>`<div class="item"><div class="inline" style="justify-content:space-between"><b>${esc(p.name)}</b><span class="hint">${esc(p.memories||0)} 记忆</span></div><div class="hint">${esc(p.path||'')}</div><div class="hint">${esc(p.key||'')}</div></div>`).join(''):'<div class="empty">还没有项目</div>';
+  $('#ovProjectCounts').textContent=`全局 ${ (state.globalMemories||[]).length } · 当前项目 ${ (state.projectMemories||[]).length }`;
+  $('#ctxBadge').textContent=state.ctx?'ctx '+state.ctx.slice(4,12):'未 bootstrap';
   $('#ctxBadge').className='chip '+(state.ctx?'ok':'');
 }
 function renderIdentity(){
   const id=(state.status&&state.status.identity)||state.identity||{};
-  $('#idNameText').textContent=id.name||'—';
-  $('#idPersonaText').textContent=id.persona||'—';
-  const boundaries=id.boundaries||[];
-  $('#idBoundariesText').innerHTML=boundaries.length?boundaries.map(b=>`<div class="item"><div class="text">${esc(b)}</div></div>`).join(''):'<div class="empty">没有边界</div>';
+  $('#idName').value=id.name||'';
+  $('#idAddress').value=(id.style&&id.style.address_user)||'';
+  $('#idPersona').value=id.persona||'';
+  $('#idBoundaries').value=(id.boundaries||[]).join('\n');
   $('#idVersion').textContent='v'+(id.version??'—');
 }
 function memoryHTML(m){
@@ -582,13 +604,15 @@ function memoryHTML(m){
   const rationale=m.rationale?`<div class="quote"><b>为什么：</b>${esc(m.rationale)}</div>`:'';
   const conditions=m.conditions?`<div class="quote"><b>适用条件：</b>${esc(m.conditions)}</div>`:'';
   return `<div class="item"><div class="row-meta"><span class="type ${esc(m.type)}">${esc(m.type)}</span><span class="type">${scope}</span><span class="hint">${esc(m.topic||'no-topic')} · conf ${esc(m.confidence)} · v${esc(m.version??1)}</span></div>
-    <div class="text">${esc(m.content)}</div>${rationale}${conditions}${quote}</div>`;
+    <div class="text">${esc(m.content)}</div>${rationale}${conditions}${quote}
+    <div class="actions"><button class="text-btn" data-action="edit-memory" data-id="${esc(m.id)}">编辑</button><button class="text-btn" data-action="delete-memory" data-id="${esc(m.id)}">删除</button></div></div>`;
 }
 async function loadMemories(){
   if(!state.ctx) return;
   const q=$('#memQuery').value.trim();
   const data=q?await rpc('memory_search',[state.ctx,q],{k:30}):await rpc('memory_list',[state.ctx],{status:'active',limit:100});
   const items=data.items||[];
+  state.memories=items;
   $('#memList').innerHTML=items.length?items.map(m=>memoryHTML(m)).join(''):'<div class="empty">没有匹配的记忆</div>';
 }
 async function loadActivity(){
@@ -596,17 +620,17 @@ async function loadActivity(){
   const items=(data.items||[]).filter(a=>/^(memory|doc|skill|identity)\./.test(a.action));
   const html=items.length?items.slice(0,50).map(a=>`<div class="item"><div class="row-meta"><span class="type">${esc(a.action)}</span><span class="hint">${esc((a.at||'').slice(0,16))} · ${esc(a.entity||'')}</span></div><div class="text">${esc(JSON.stringify(a.detail||{}))}</div></div>`).join(''):'<div class="empty">还没有写入</div>';
   const target=$('#activityList'); if(target) target.innerHTML=html;
-  const overview=$('#ovActivityList'); if(overview) overview.innerHTML=items.slice(0,4).map(a=>`<div class="item"><div class="row-meta"><span class="type">${esc(a.action)}</span><span class="hint">${esc((a.at||'').slice(0,16))}</span></div><div class="text">${esc(a.entity||'')}</div></div>`).join('')||'<div class="empty">还没有写入</div>';
+  const overview=$('#ovActivityList'); if(overview) overview.innerHTML=items.slice(0,3).map(a=>`<div class="item"><div class="row-meta"><span class="type">${esc(a.action)}</span><span class="hint">${esc((a.at||'').slice(0,16))}</span></div><div class="text">${esc(a.entity||'')}</div></div>`).join('')||'<div class="empty">还没有写入</div>';
 }
 async function loadDocs(){
   if(!state.ctx) return;
   const data=await rpc('doc_list',[state.ctx]); const items=data.items||[];
-  $('#docList').innerHTML=items.length?items.map(d=>`<div class="item"><div class="row-meta"><span class="type">${d.project_id?'project':'global'}</span><span class="hint">${esc(d.path)}</span></div><div class="text"><b>${esc(d.title)}</b></div><div class="hint" style="margin-top:6px">${esc(d.preview)}</div><div class="actions"><button class="tonal-btn" style="height:32px;padding:0 12px" data-action="read-doc" data-id="${esc(d.document_id)}">查看</button></div></div>`).join(''):'<div class="empty">没有文档</div>';
+  $('#docList').innerHTML=items.length?items.map(d=>`<div class="item"><div class="row-meta"><span class="type">${d.project_id?'project':'global'}</span><span class="hint">${esc(d.path)}</span></div><div class="text"><b>${esc(d.title)}</b></div><div class="hint" style="margin-top:6px">${esc(d.preview)}</div><div class="actions"><button class="text-btn" data-action="edit-doc" data-id="${esc(d.document_id)}">编辑</button><button class="text-btn" data-action="delete-doc" data-id="${esc(d.document_id)}">删除</button></div></div>`).join(''):'<div class="empty">没有文档</div>';
 }
 async function loadSkills(){
   if(!state.ctx) return;
   const data=await rpc('skill_list',[state.ctx]); const items=data.items||[];
-  $('#skillList').innerHTML=items.length?items.map(s=>`<div class="item"><div class="row-meta"><span class="type">folder</span><span class="type ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="hint">${esc(s.file_count||1)} files</span></div><div class="text"><b>${esc(s.name)}</b></div><div class="quote">${esc(s.description||s.trigger||'')}</div><div class="actions"><button class="tonal-btn" style="height:32px;padding:0 12px" data-action="read-skill" data-id="${esc(s.id)}">查看文件夹</button></div></div>`).join(''):'<div class="empty">还没有技能文件夹</div>';
+  $('#skillList').innerHTML=items.length?items.map(s=>`<div class="item"><div class="row-meta"><span class="type">folder</span><span class="type ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="hint">${esc(s.file_count||1)} files</span></div><div class="text"><b>${esc(s.name)}</b></div><div class="quote">${esc(s.description||s.trigger||'')}</div><div class="actions"><button class="text-btn" data-action="read-skill" data-id="${esc(s.id)}">打开 / 编辑</button><button class="text-btn" data-action="delete-skill" data-id="${esc(s.id)}">删除</button></div></div>`).join(''):'<div class="empty">还没有技能文件夹</div>';
 }
 async function loadTab(tab){
   try{
@@ -619,17 +643,189 @@ async function loadTab(tab){
     if(tab==='settings'){ $('#setHub').value=location.origin; $('#mcpSnippet').textContent=mcpSnippet(); await loadTokens(); }
   }catch(e){ snack(String(e.message),'err'); }
 }
-function openDialog(title, body){ const d=$('#dialog'); $('#dialogTitle').textContent=title; $('#dialogBody').textContent=body; if(!d.open) d.showModal(); }
+let cm=null;
+function openDialog(title, body){
+  if(cm){ cm.toTextArea(); cm=null; }
+  const d=$('#dialog'); d.classList.remove('editor');
+  $('#dialogTitle').textContent=title; $('#dialogBody').textContent=body;
+  if(!d.open) d.showModal();
+}
+function openEditorDialog(title, html){
+  if(cm){ cm.toTextArea(); cm=null; }
+  const d=$('#dialog'); d.classList.add('editor');
+  $('#dialogTitle').textContent=title; $('#dialogBody').innerHTML=html;
+  if(!d.open) d.showModal();
+}
+function closeDialog(){
+  if(cm){ cm.toTextArea(); cm=null; }
+  const d=$('#dialog'); if(d.open) d.close();
+}
+function modeForPath(path){
+  const ext=(path.split('.').pop()||'').toLowerCase();
+  return {js:'javascript',mjs:'javascript',ts:'javascript',py:'python',sh:'shell',ps1:'shell',
+    html:'xml',xml:'xml',css:'css',yml:'yaml',yaml:'yaml',json:'javascript'}[ext]||'markdown';
+}
+function makeEditor(textarea, mode='markdown'){
+  cm=CodeMirror.fromTextArea(textarea,{lineNumbers:true,lineWrapping:true,mode,indentUnit:2,tabSize:2});
+  return cm;
+}
+async function openMemoryForm(id){
+  const m=id?(state.memories||[]).find(x=>x.id===id):null;
+  const scope=m&&!m.project_id?'global':'project';
+  const types=['fact','preference','decision','lesson','procedure','reference'];
+  openEditorDialog(m?'编辑记忆':'新建记忆',`<div class="form">
+    <div class="field"><label for="fmContent">内容</label><textarea id="fmContent" rows="4">${esc(m?.content||'')}</textarea></div>
+    <div class="form-row">
+      <div class="field"><label for="fmType">类型</label><select id="fmType">${types.map(t=>`<option value="${t}" ${m?.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="field"><label for="fmScope">作用域</label><select id="fmScope"><option value="project" ${scope==='project'?'selected':''}>当前项目</option><option value="global" ${scope==='global'?'selected':''}>全局</option></select></div>
+    </div>
+    <div class="field"><label for="fmTopic">topic（稳定标识，编辑时不要随便改）</label><input id="fmTopic" value="${esc(m?.topic||'')}" placeholder="例如 decision.storage"></div>
+    <div class="field"><label for="fmRationale">为什么 / rationale</label><textarea id="fmRationale" rows="2">${esc(m?.rationale||'')}</textarea></div>
+    <div class="field"><label for="fmConditions">适用条件</label><input id="fmConditions" value="${esc(m?.conditions||'')}" placeholder="换项目就不适用？写清楚"></div>
+    <label class="inline" style="gap:8px"><input type="checkbox" id="fmPinned" ${m?.pinned?'checked':''} style="width:auto"> 置顶 / 每次 bootstrap 自动注入</label>
+    <div class="inline"><button class="filled-btn" id="fmSave">保存</button><span class="hint" id="fmState"></span></div>
+  </div>`);
+  $('#fmSave').onclick=async()=>{
+    try{
+      const topic=$('#fmTopic').value.trim();
+      if(!topic) throw new Error('topic 不能为空');
+      await rpc('memory_write',[state.ctx],{
+        content:$('#fmContent').value, type:$('#fmType').value, topic,
+        scope:$('#fmScope').value, rationale:$('#fmRationale').value,
+        conditions:$('#fmConditions').value, pinned:$('#fmPinned').checked,
+      });
+      closeDialog(); await refreshAll(); snack('记忆已保存');
+    }catch(e){ $('#fmState').textContent=String(e.message); }
+  };
+}
+async function openDocForm(id){
+  let doc={title:'',path:'docs/',content:''};
+  if(id){ doc=await rpc('doc_read',[state.ctx,id]); }
+  openEditorDialog(id?'编辑文档':'新建文档',`<div class="form">
+    <div class="form-row"><div class="field"><label for="fdPath">路径</label><input id="fdPath" value="${esc(doc.path||'docs/')}"></div>
+    <div class="field"><label for="fdTitle">标题</label><input id="fdTitle" value="${esc(doc.title||'')}"></div></div>
+    <div class="field"><label for="fdContent">内容</label><textarea id="fdContent" rows="12">${esc(doc.content||'')}</textarea></div>
+    <div class="inline"><button class="filled-btn" id="fdSave">保存</button>${id?'<button class="text-btn" id="fdDelete">删除</button>':''}<span class="hint" id="fdState"></span></div>
+  </div>`);
+  makeEditor($('#fdContent'),'markdown');
+  $('#fdSave').onclick=async()=>{
+    try{
+      const path=$('#fdPath').value.trim(); if(!path) throw new Error('路径不能为空');
+      await rpc('doc_add',[state.ctx],{path,title:$('#fdTitle').value,content:cm.getValue()});
+      closeDialog(); await loadDocs(); snack('文档已保存');
+    }catch(e){ $('#fdState').textContent=String(e.message); }
+  };
+  if(id) $('#fdDelete').onclick=async()=>{
+    if(!confirm('删除这个文档？')) return;
+    await rpc('doc_delete',[state.ctx,id]); closeDialog(); await loadDocs(); snack('文档已删除');
+  };
+}
+function skillTreeHTML(files,active){
+  const root={};
+  for(const f of files){
+    const parts=f.path.split('/'); let node=root;
+    for(const part of parts.slice(0,-1)){ node[part]=node[part]||{}; node=node[part]; }
+    node[parts[parts.length-1]]={__file:f.path};
+  }
+  function render(node){
+    return '<ul>'+Object.keys(node).sort().map(name=>{
+      const value=node[name];
+      if(value.__file) return `<li><button data-skill-path="${esc(value.__file)}" class="${active===value.__file?'active':''}">${esc(name)}</button></li>`;
+      return `<li><div class="folder">▸ ${esc(name)}/</div>${render(value)}</li>`;
+    }).join('')+'</ul>';
+  }
+  return render(root);
+}
 async function openSkill(id){
   const s=await rpc('skill_get',[state.ctx,id]);
-  const files=(s.files||[]).map(f=>`<button class="tonal-btn" style="height:30px;padding:0 10px;margin:4px" data-action="skill-file" data-id="${esc(id)}" data-path="${esc(f.path)}">${esc(f.path)} <span class="hint">${f.size}b</span></button>`).join('');
-  $('#dialogTitle').textContent=s.name||'Skill';
-  $('#dialogBody').innerHTML=`<div class="hint" style="margin-bottom:8px">${esc(s.file_count||0)} files · ${esc(s.status)} · ${esc(s.dir_path||'')}</div><div class="inline">${files}</div><hr class="divider"><pre class="code" style="margin:0">${esc(s.skill_md||'')}</pre>`;
-  const d=$('#dialog'); if(!d.open) d.showModal();
+  const files=(s.files||[]).filter(f=>f.path);
+  openEditorDialog(s.name||'Skill',`<div class="skill-layout">
+    <div class="skill-tree" id="skillTree">${skillTreeHTML(files,'SKILL.md')}</div>
+    <div class="skill-editor"><div class="skill-path" id="skillPath">SKILL.md</div><textarea id="skillText"></textarea>
+      <div class="inline" style="margin-top:8px"><button class="filled-btn" id="skSave">保存文件</button><button class="text-btn" id="skDelete">删除技能</button><span class="hint" id="skState"></span></div></div>
+  </div>`);
+  let currentPath='SKILL.md';
+  if(!files.some(f=>f.path==='SKILL.md') && files.length) currentPath=files[0].path;
+  makeEditor($('#skillText'),modeForPath(currentPath));
+  const loadFile=async(path)=>{
+    const file=await rpc('skill_file',[state.ctx,id,path]);
+    currentPath=path; $('#skillPath').textContent=path;
+    cm.setOption('mode',modeForPath(path)); cm.setValue(file.content||'');
+    $('#skillTree').innerHTML=skillTreeHTML(files,path);
+  };
+  $('#skillTree').onclick=e=>{ const b=e.target.closest('[data-skill-path]'); if(b) loadFile(b.dataset.skillPath).catch(err=>$('#skState').textContent=String(err.message)); };
+  await loadFile(currentPath);
+  $('#skSave').onclick=async()=>{
+    try{
+      await rpc('skill_save_file',[state.ctx,id,currentPath],{content:cm.getValue()});
+      $('#skState').textContent='已保存'; await loadSkills(); snack('文件已保存');
+    }catch(e){ $('#skState').textContent=String(e.message); }
+  };
+  $('#skDelete').onclick=async()=>{
+    if(!confirm('删除整个技能文件夹？')) return;
+    await rpc('skill_delete',[state.ctx,id]); closeDialog(); await loadSkills(); snack('技能已删除');
+  };
+}
+function openNewSkill(){
+  openEditorDialog('新建技能',`<div class="form">
+    <div class="field"><label for="nsName">名称</label><input id="nsName" placeholder="release-check"></div>
+    <div class="field"><label for="nsDesc">用途</label><textarea id="nsDesc" rows="3"></textarea></div>
+    <div class="field"><label for="nsSteps">步骤（每行一条）</label><textarea id="nsSteps" rows="3"></textarea></div>
+    <div class="inline"><button class="filled-btn" id="nsSave">创建</button><span class="hint" id="nsState"></span></div>
+  </div>`);
+  $('#nsSave').onclick=async()=>{
+    try{
+      const name=$('#nsName').value.trim(); if(!name) throw new Error('名称不能为空');
+      const steps=$('#nsSteps').value.split('\n').map(s=>s.trim()).filter(Boolean);
+      const md=`---\nname: ${name}\ndescription: ${$('#nsDesc').value.trim()}\n---\n\n# ${name}\n\n${$('#nsDesc').value.trim()}\n\n## Steps\n${steps.map(s=>'- '+s).join('\n')}\n`;
+      await rpc('skill_install',[state.ctx],{files:{'SKILL.md':md},name});
+      closeDialog(); await loadSkills(); snack('技能已创建');
+    }catch(e){ $('#nsState').textContent=String(e.message); }
+  };
 }
 function initTheme(){
   const saved=localStorage.getItem('mb_theme');
   if(saved==='dark') document.documentElement.dataset.theme='dark';
+}
+async function saveIdentity(){
+  $('#idState').textContent='保存中…';
+  try{
+    await rpc('identity_update',[state.ctx],{
+      name:$('#idName').value.trim(),
+      persona:$('#idPersona').value,
+      address_user:$('#idAddress').value.trim(),
+      boundaries:$('#idBoundaries').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    });
+    await refreshAll(); $('#idState').textContent='已保存';
+  }catch(e){ $('#idState').textContent=String(e.message); }
+}
+async function saveSecurity(){
+  $('#secState').textContent='保存中…';
+  if($('#secNew').value !== $('#secConfirm').value){ $('#secState').textContent='两次输入的新密码不一致'; return; }
+  try{
+    const res=await fetch('/password',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({current_password:$('#secCurrent').value,new_password:$('#secNew').value})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data?.error?.message||('HTTP '+res.status));
+    $('#secCurrent').value=''; $('#secNew').value=''; $('#secConfirm').value='';
+    $('#secState').textContent='密码已修改';
+  }catch(e){ $('#secState').textContent=String(e.message); }
+}
+async function uploadSkillFolder(fileList){
+  const files=Array.from(fileList||[]);
+  if(!files.length) return;
+  const map={};
+  for(const file of files){
+    const path=(file.webkitRelativePath||file.name).split('/').slice(1).join('/')||file.name;
+    if(file.size>2*1024*1024) continue;
+    map[path]=await file.text();
+  }
+  if(!map['SKILL.md']){ snack('文件夹根目录必须有 SKILL.md','err'); return; }
+  try{
+    await rpc('skill_install',[state.ctx],{files:map});
+    snack('技能文件夹已上传'); await loadSkills();
+  }catch(e){ snack(String(e.message),'err'); }
+  finally{ $('#skillFolder').value=''; }
 }
 function toggleTheme(){
   const dark=document.documentElement.dataset.theme==='dark';
@@ -651,6 +847,9 @@ $('#pwBtn').addEventListener('click',changePassword);
 $('#logoutBtn').addEventListener('click',logout);
 $('#tokenCreate').addEventListener('click',createToken);
 $('#tokenList').addEventListener('click',e=>{const b=e.target.closest('[data-token-revoke]'); if(b) revokeToken(b.dataset.tokenRevoke);});
+$('#idSave').addEventListener('click',saveIdentity);
+$('#secSave').addEventListener('click',saveSecurity);
+$('#skillFolder').addEventListener('change',e=>uploadSkillFolder(e.target.files));
 $('#memSearch').addEventListener('click',()=>loadMemories().catch(e=>snack(String(e.message),'err')));
 $('#memQuery').addEventListener('keydown',e=>{if(e.key==='Enter') loadMemories().catch(err=>snack(String(err.message),'err'));});
 $('#memReload').addEventListener('click',()=>{$('#memQuery').value=''; loadMemories().catch(e=>snack(String(e.message),'err'));});
@@ -667,15 +866,26 @@ $('#exportBtn').addEventListener('click',async()=>{
     const blob=await res.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='membridge-export.json'; a.click(); URL.revokeObjectURL(a.href);
   }catch(e){ snack(String(e.message),'err'); }
 });
-$('#dialogClose').addEventListener('click',()=>$('#dialog').close());
-$('#dialog').addEventListener('click',e=>{ if(e.target===$('#dialog')) $('#dialog').close(); });
+$('#dialogClose').addEventListener('click',closeDialog);
+$('#dialog').addEventListener('click',e=>{ if(e.target===$('#dialog')) closeDialog(); });
 document.addEventListener('click',async e=>{
   const btn=e.target.closest('button[data-action]'); if(!btn) return;
   const id=btn.dataset.id, action=btn.dataset.action;
   try{
+    if(action==='new-memory'){ await openMemoryForm(null); }
+    if(action==='edit-memory'){ await openMemoryForm(id); }
+    if(action==='delete-memory'){
+      if(!confirm('删除这条记忆？')) return;
+      await rpc('memory_delete',[state.ctx,id]); await refreshAll(); snack('记忆已删除');
+    }
+    if(action==='new-doc'){ await openDocForm(null); }
+    if(action==='edit-doc'){ await openDocForm(id); }
+    if(action==='delete-doc'){ if(!confirm('删除这个文档？')) return; await rpc('doc_delete',[state.ctx,id]); await loadDocs(); snack('文档已删除'); }
     if(action==='read-doc'){ const doc=await rpc('doc_read',[state.ctx,id]); openDialog(doc.title||doc.path,doc.content||''); }
     if(action==='read-skill'){ await openSkill(id); }
-    if(action==='skill-file'){ const file=await rpc('skill_file',[state.ctx,id,btn.dataset.path]); openDialog(btn.dataset.path,file.content||''); }
+    if(action==='delete-skill'){ if(!confirm('删除整个技能文件夹？')) return; await rpc('skill_delete',[state.ctx,id]); await loadSkills(); snack('技能已删除'); }
+    if(action==='upload-skill'){ $('#skillFolder').click(); }
+    if(action==='new-skill'){ openNewSkill(); }
   }catch(err){ snack(String(err.message),'err'); }
 });
 

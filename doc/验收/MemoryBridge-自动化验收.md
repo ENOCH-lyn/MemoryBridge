@@ -9,7 +9,7 @@ LLM：用户提供的 OpenAI 兼容端点，仅作为 **Codex 客户端模型**�
 
 - 不再有候选队列/人工批准；`memory_write` 直接写入 active。
 - 不再有 `.membridge/inbox` / `transcript` / `watch`；AI 在用户提出持久要求时主动调用 MCP。
-- UI 只读：概览、记忆、文档、技能、身份、活动、连接；没有采集、候选、编辑按钮。
+- UI 可编辑：记忆/文档/技能/身份支持新建、编辑、删除；技能有目录树 + CodeMirror 单文件编辑；audit 保留只读。
 - 记忆必须有 `topic`，默认 project scope；decision/lesson 必须有 `rationale`，并写 `conditions`。
 
 ## 2. 隔离 Codex 配置
@@ -144,6 +144,20 @@ skill_.../scripts/smoke.ps1
 - 登录失败限速：同 IP 5 分钟 5 次失败后 429。
 - `compose.public.yaml`：只发布 Caddy 80/443，Hub 仅内部 `hub:8787`；`docker compose config` 通过。Docker 镜像构建仍受本机 Docker Hub 网络限制。
 - 公网 MCP 仍需 **一个入站 443 端口**；MCP 本地 proxy 是出站连接，不需要第二个端口。
+
+## 8.1 可编辑 UI 验收
+
+Playwright 使用隔离 DB 完成：
+
+- 登录 `admin/admin` → 强制改密 → 概览渲染。
+- 记忆：新建 `ui.created`；列表出现。
+- 文档：新建 `docs/ui-test.md`（CodeMirror 写入）→ 列表出现。
+- 技能：打开目录树 → 编辑 `SKILL.md` → 保存；新建技能成功。
+- 身份：修改 name 保存后回读。
+- 设置：修改密码成功。
+- 页面无 JS error；技能目录树 + CodeMirror 截图保存在 `doc/assets/skills.png`。
+
+删除路径由 `tests/test_service.py` 覆盖：`doc_delete`、`skill_save_file`、`skill_delete` 后计数归零。
 
 ## 9. 未完成
 

@@ -82,13 +82,13 @@ class McpTest(unittest.TestCase):
 
         bootstrap = json.loads(by_id[3]["content"][0]["text"])
         self.assertTrue(bootstrap["context_version"].startswith("ctx_"))
-        self.assertEqual(bootstrap["identity"]["name"], "默认")
+        self.assertEqual(bootstrap["identity"]["name"], "猫娘")
 
         gated = by_id[4]
         self.assertTrue(gated["isError"])
         self.assertIn("BOOTSTRAP_REQUIRED", gated["content"][0]["text"])
         whoami = json.loads(by_id[5]["content"][0]["text"])
-        self.assertEqual(whoami["identity"]["name"], "默认")
+        self.assertEqual(whoami["identity"]["name"], "猫娘")
 
     def test_context_version_can_be_reused_across_processes(self) -> None:
         first = _run_mcp(

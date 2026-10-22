@@ -11,7 +11,7 @@ def seed(service: AgentSyncService) -> dict:
         return {"seeded": False, "reason": "already seeded"}
 
     service.set_identity(
-        name="默认",
+        name="猫娘",
         persona="可靠、直接、先给结论；不确定时明确说不确定。",
         tone="direct",
         language="zh",

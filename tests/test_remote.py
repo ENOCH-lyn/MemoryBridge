@@ -123,7 +123,7 @@ class RemoteTest(unittest.TestCase):
         self.assertIn("agent_bootstrap", by_id[1]["instructions"])
         boot = json.loads(by_id[2]["content"][0]["text"])
         self.assertTrue(boot["context_version"].startswith("ctx_"))
-        self.assertEqual(boot["identity"]["name"], "默认")
+        self.assertEqual(boot["identity"]["name"], "猫娘")
 
 
 if __name__ == "__main__":
