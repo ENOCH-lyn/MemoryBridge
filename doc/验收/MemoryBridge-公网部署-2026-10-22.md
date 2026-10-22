@@ -53,7 +53,8 @@ journalctl -u membridge -n 50 --no-pager
   - `initialize` 成功
   - `agent_bootstrap` `isError=false`
   - 返回猫娘 persona 与空项目 `public-smoke`
-- 临时 token 测完已撤销；保留 `initial-mcp` 供首次使用。
+- 临时 token 测完已撤销；`initial-mcp` 也已撤销。当前 active token 为 `default-mcp`，明文在 `/root/membridge-api-token`；建议登录后撤销并按设备重建。
+- 初始 admin 密码文件 `/root/membridge-admin-password` 是部署时生成的；如果已经登录改过密码，以新密码为准，文件不会自动更新。
 
 ## 2026-10-22 功能修复（已重新部署）
 
