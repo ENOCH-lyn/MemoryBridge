@@ -138,6 +138,7 @@ skill_.../scripts/smoke.ps1
 - 未改密直接 `/rpc` → **403 PASSWORD_CHANGE_REQUIRED**。
 - `POST /password` 改密后 → 200，新会话 Cookie；旧密码登录 → **401**。
 - `POST /tokens` 创建 API token → `/rpc` 用 Bearer token → **200**；token 只返回一次。
+- 端到端 MCP auth：隔离 Hub 上 `admin/admin → 改密 → 创建 API token`，再启动 `membridge serve --remote ... --token mb_...`，`initialize + agent_bootstrap` 返回 2 个响应且 `bootstrap_ok=True`。
 - 静态 `MEMBRIDGE_TOKEN` 仍可作服务 token（兼容测试通过）。
 - 带 `X-Forwarded-Proto: https` 时，Cookie 带 `Secure`，并返回 HSTS。
 - 登录失败限速：同 IP 5 分钟 5 次失败后 429。
