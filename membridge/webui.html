@@ -218,7 +218,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
       <h2>登录</h2>
       <p class="hint">首次部署使用初始化账号；登录后请立即修改密码。</p>
       <div class="form">
-        <div class="field"><label for="loginUser">用户名</label><input id="loginUser" autocomplete="username" value="admin"></div>
+        <div class="field"><label for="loginUser">用户名</label><input id="loginUser" autocomplete="username" placeholder="用户名"></div>
         <div class="field"><label for="loginPass">密码</label><input id="loginPass" type="password" autocomplete="current-password"></div>
         <div class="auth-actions"><span class="hint" id="loginError"></span><button class="filled-btn" id="loginBtn">登录</button></div>
       </div>
@@ -257,6 +257,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
       <div><h1 id="pageTitle">概览</h1><p class="sub" id="pageSub"></p></div>
       <div class="top-actions">
         <span class="chip" id="ctxBadge">未 bootstrap</span>
+        <button class="text-btn" id="logoutTop">退出登录</button>
         <button class="icon-btn" id="refreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-1.76-4.24L13 11h7V4l-2.35 2.35z"/></svg></button>
         <button class="icon-btn" data-tab="settings" aria-label="连接"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 00.12-.64l-1.92-3.32a.5.5 0 00-.61-.22l-2.39.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.5.5 0 00-.5-.42h-3.84a.5.5 0 00-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 00-.61.22L2.74 8.84a.5.5 0 00.12.64l2.03 1.58c-.05.3-.07.63-.07.94s.02.64.07.94l-2.03 1.58a.5.5 0 00-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 00-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg></button>
       </div>
@@ -373,6 +374,19 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
         </div>
         <div class="card" style="margin-top:16px">
           <div class="inline" style="justify-content:space-between;align-items:flex-start">
+            <h2 class="section-title">账号</h2>
+            <span class="hint">当前用户名：<b id="acctName">—</b></span>
+          </div>
+          <div class="form" style="margin-top:12px">
+            <div class="form-row">
+              <div class="field"><label for="acctUser">新用户名</label><input id="acctUser" placeholder="3-32 位字母、数字、._-"></div>
+              <div class="field"><label for="acctPass">当前密码</label><input id="acctPass" type="password" autocomplete="current-password"></div>
+            </div>
+            <div class="inline"><button class="filled-btn" id="acctSave">修改用户名</button><span class="hint" id="acctState"></span></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="inline" style="justify-content:space-between;align-items:flex-start">
             <div><h2 class="section-title">API token / MCP 鉴权</h2><p class="section-sub">MCP proxy 用 Bearer token；token 只显示一次，存到你的 MCP 客户端配置里。</p></div>
             <button class="text-btn" id="logoutBtn">退出登录</button>
           </div>
@@ -418,7 +432,7 @@ const $$ = (s, root=document) => Array.from(root.querySelectorAll(s));
 const state = {
   token: localStorage.getItem('mb_token') || '',
   project: localStorage.getItem('mb_project') || 'demo',
-  ctx: null, status: null, identity: null, tab: 'overview',
+  ctx: null, status: null, identity: null, tab: 'overview', username: '',
 };
 const titles = {
   overview:['概览','同一个 agent，换设备不重来'],
@@ -473,6 +487,7 @@ async function checkAuth(){
   let data; try{ data=await res.json(); }catch(e){ data={}; }
   if(!res.ok){ showAuth('login'); return false; }
   const result=data.result||{};
+  state.username=result.username||'';
   if(result.must_change_password){ showAuth('password'); return false; }
   hideAuth(); return true;
 }
@@ -483,6 +498,7 @@ async function login(){
       body:JSON.stringify({username:$('#loginUser').value.trim(),password:$('#loginPass').value})});
     const data=await res.json().catch(()=>({}));
     if(!res.ok){ $('#loginError').textContent=data?.error?.message||('HTTP '+res.status); return; }
+    state.username=data.result?.username||'';
     $('#loginPass').value='';
     if(data.result?.must_change_password){ showAuth('password'); return; }
     hideAuth(); await refreshAll();
@@ -501,9 +517,15 @@ async function changePassword(){
   }catch(e){ $('#pwError').textContent=String(e.message||e); }
 }
 async function logout(){
-  await fetch('/logout',{method:'POST'});
+  try{
+    const res=await fetch('/logout',{method:'POST'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+  }catch(e){
+    snack('退出失败：'+String(e.message),'err'); return;
+  }
   state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value='';
-  state.ctx=null; showAuth('login');
+  state.ctx=null; state.username='';
+  window.location.replace('/');
 }
 async function loadTokens(){
   try{
@@ -527,8 +549,12 @@ async function createToken(){
 }
 async function revokeToken(id){
   if(!confirm('撤销这个 API token？')) return;
-  await fetch('/tokens/'+encodeURIComponent(id),{method:'POST'});
-  await loadTokens();
+  try{
+    const res=await fetch('/tokens/'+encodeURIComponent(id),{method:'POST'});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data?.error?.message||('HTTP '+res.status));
+    await loadTokens(); snack('API token 已撤销');
+  }catch(e){ snack(String(e.message),'err'); }
 }
 
 function saveSettings(){
@@ -644,7 +670,7 @@ async function loadTab(tab){
     if(tab==='skills') await loadSkills();
     if(tab==='identity') await refreshStatus();
     if(tab==='activity') await loadActivity();
-    if(tab==='settings'){ $('#setHub').value=location.origin; $('#mcpSnippet').textContent=mcpSnippet(); await loadTokens(); }
+    if(tab==='settings'){ $('#setHub').value=location.origin; $('#acctName').textContent=state.username||'—'; $('#mcpSnippet').textContent=mcpSnippet(); await loadTokens(); }
   }catch(e){ snack(String(e.message),'err'); }
 }
 let cm=null;
@@ -834,6 +860,20 @@ async function saveSecurity(){
     $('#secState').textContent='密码已修改';
   }catch(e){ $('#secState').textContent=String(e.message); }
 }
+async function saveUsername(){
+  $('#acctState').textContent='保存中…';
+  try{
+    const res=await fetch('/account/username',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:$('#acctUser').value.trim(),current_password:$('#acctPass').value})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data?.error?.message||('HTTP '+res.status));
+    state.username=data.result.username;
+    $('#acctName').textContent=state.username;
+    $('#acctUser').value=''; $('#acctPass').value='';
+    $('#acctState').textContent='用户名已修改，下次登录用新用户名';
+    snack('用户名已修改');
+  }catch(e){ $('#acctState').textContent=String(e.message); }
+}
 async function uploadSkillFolder(fileList){
   const files=Array.from(fileList||[]);
   if(!files.length) return;
@@ -868,6 +908,8 @@ $('#loginBtn').addEventListener('click',login);
 $('#loginPass').addEventListener('keydown',e=>{if(e.key==='Enter') login();});
 $('#pwBtn').addEventListener('click',changePassword);
 $('#logoutBtn').addEventListener('click',logout);
+$('#logoutTop').addEventListener('click',logout);
+$('#acctSave').addEventListener('click',saveUsername);
 $('#tokenCreate').addEventListener('click',createToken);
 $('#tokenList').addEventListener('click',e=>{const b=e.target.closest('[data-token-revoke]'); if(b) revokeToken(b.dataset.tokenRevoke);});
 $('#idSave').addEventListener('click',saveIdentity);

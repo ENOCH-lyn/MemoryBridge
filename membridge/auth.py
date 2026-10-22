@@ -9,6 +9,7 @@ import base64
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -112,6 +113,25 @@ def delete_session(conn: sqlite3.Connection, session_id: str | None) -> None:
         conn.commit()
 
 
+def update_username(conn: sqlite3.Connection, user_id: str, current: str, username: str) -> str:
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
+        raise ValueError("user not found")
+    if not verify_password(current, row["password_hash"]):
+        raise ValueError("current password is incorrect")
+    username = username.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,32}", username):
+        raise ValueError("username must be 3-32 chars: letters, numbers, dot, underscore, hyphen")
+    if username == row["username"]:
+        return username
+    exists = conn.execute("SELECT 1 FROM users WHERE username = ? AND id != ?", (username, user_id)).fetchone()
+    if exists:
+        raise ValueError("username already exists")
+    conn.execute("UPDATE users SET username = ?, updated_at = ? WHERE id = ?", (username, utcnow(), user_id))
+    conn.commit()
+    return username
+
+
 def change_password(conn: sqlite3.Connection, user_id: str, current: str, new: str) -> None:
     row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if row is None:
@@ -163,7 +183,7 @@ def verify_api_token(conn: sqlite3.Connection, token: str) -> dict[str, Any] | N
 def list_api_tokens(conn: sqlite3.Connection, user_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT id, name, prefix, created_at, last_used_at, revoked_at FROM api_tokens "
-        "WHERE user_id = ? ORDER BY created_at DESC",
+        "WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC",
         (user_id,),
     ).fetchall()
     return [dict(row) for row in rows]

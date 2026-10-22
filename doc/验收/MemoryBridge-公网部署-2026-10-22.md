@@ -55,6 +55,16 @@ journalctl -u membridge -n 50 --no-pager
   - 返回猫娘 persona 与空项目 `public-smoke`
 - 临时 token 测完已撤销；保留 `initial-mcp` 供首次使用。
 
+## 2026-10-22 功能修复（已重新部署）
+
+- 登录页不再默认填 `admin`；用户名输入框为空。
+- 设置页新增「账号」：修改用户名需要当前密码；用户名规则 `3-32` 位字母/数字/`._-`；旧用户名立即失效，当前会话保留。
+- 顶栏和设置页都有「退出登录」；退出后清 Cookie 并 reload，`/me` 返回 401。
+- API token 列表只显示未撤销 token；撤销后刷新列表，不再显示“已撤销但仍占一行”。
+- 服务端新增 `POST /account/username`，`GET /tokens` 只返回 active token。
+- 已用隔离 Hub + Playwright 验证：修改用户名、退出登录、创建/撤销 token、列表刷新；32 tests OK。
+- 注意：`/root/membridge-admin-password` 是**初始密码**；如果已经登录并改过密码，该文件不会自动更新，以你改后的密码为准。
+
 ## 已知边界
 
 - origin 证书是 self-signed，Cloudflare 必须 Full；要 Full strict 需换 Cloudflare Origin CA 或 Let's Encrypt 证书。

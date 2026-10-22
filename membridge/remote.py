@@ -29,6 +29,7 @@ from .auth import (
     get_session,
     list_api_tokens,
     revoke_api_token,
+    update_username,
     verify_api_token,
 )
 from .service import AgentSyncService, GateError
@@ -349,6 +350,9 @@ class HubHandler(BaseHTTPRequestHandler):
         if self.path == "/password":
             self._change_password()
             return
+        if self.path == "/account/username":
+            self._change_username()
+            return
         if self.path == "/tokens":
             self._create_token()
             return
@@ -447,6 +451,31 @@ class HubHandler(BaseHTTPRequestHandler):
                 return
             session_id = create_session(svc.conn, ctx["user"]["user_id"])
             self._send_json(200, {"ok": True, "result": {"changed": True}}, cookie=self._session_cookie(session_id))
+        finally:
+            svc.close()
+
+    def _change_username(self) -> None:
+        svc = self._service()
+        try:
+            ctx = self._require_session(svc)
+            if not ctx:
+                return
+            body = self._read_json()
+            if body is None:
+                return
+            try:
+                username = update_username(
+                    svc.conn,
+                    ctx["user"]["user_id"],
+                    str(body.get("current_password", "")),
+                    str(body.get("username", "")),
+                )
+            except ValueError as exc:
+                self._send_json(400, {"ok": False, "error": {"code": "INVALID_USERNAME", "message": str(exc)}})
+                return
+            svc._audit("user.username", ctx["user"]["user_id"], {"username": username})
+            svc.conn.commit()
+            self._send_json(200, {"ok": True, "result": {"username": username}})
         finally:
             svc.close()
 

@@ -87,6 +87,36 @@ class AuthTest(unittest.TestCase):
         status, _, _ = _request(self.base + "/login", "POST", {"username": "admin", "password": "admin"})
         self.assertEqual(status, 401)
 
+        # Token list must only include active tokens, and revoke must remove it.
+        status, _, body = _request(self.base + "/tokens", "GET", cookie=new_cookie)
+        self.assertEqual(status, 200)
+        token_id = json.loads(body)["result"]["items"][0]["id"]
+        status, _, _ = _request(self.base + "/tokens/" + token_id, "POST", cookie=new_cookie)
+        self.assertEqual(status, 200)
+        status, _, body = _request(self.base + "/tokens", "GET", cookie=new_cookie)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["result"]["items"], [])
+
+        # Username is editable and takes effect at the next login.
+        status, _, body = _request(
+            self.base + "/account/username",
+            "POST",
+            {"username": "owner", "current_password": "newpass123"},
+            cookie=new_cookie,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["result"]["username"], "owner")
+        status, _, _ = _request(self.base + "/login", "POST", {"username": "admin", "password": "newpass123"})
+        self.assertEqual(status, 401)
+        status, _, _ = _request(self.base + "/login", "POST", {"username": "owner", "password": "newpass123"})
+        self.assertEqual(status, 200)
+
+        # Logout invalidates the session cookie.
+        status, _, _ = _request(self.base + "/logout", "POST", cookie=new_cookie)
+        self.assertEqual(status, 204)
+        status, _, _ = _request(self.base + "/me", "GET", cookie=new_cookie)
+        self.assertEqual(status, 401)
+
     def test_static_service_token_still_works(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             hub = create_hub(str(Path(folder) / "token.db"), host="127.0.0.1", port=0, token="service-token")
