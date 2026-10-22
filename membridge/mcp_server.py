@@ -26,6 +26,8 @@ INSTRUCTIONS = (
     "If you skip bootstrap, those tools return BOOTSTRAP_REQUIRED. "
     "Use `project_list` to discover projects; `memory_search(scope='auto')` searches current project + global, "
     "while `scope='all'` searches across all projects. `memory_list(project_id=...)` batch-reads a known project. "
+    "Documents follow the same scope model: `doc_search(scope='all')` / `doc_list(scope='all')` search across projects; "
+    "`doc_search` returns snippets, so call `doc_read` for the full document. "
     "The web console is also editable (memory/document/skill/identity CRUD), but you remain responsible "
     "for maintaining durable context: when the user states a durable requirement, decision, "
     "lesson or preference, call `memory_write` directly with a stable `topic`, the right `scope` "
@@ -228,9 +230,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "doc_search",
         "title": "Search documents",
-        "description": "Search Markdown/ADR documents attached to the current project. Requires bootstrap.",
+        "description": "Search Markdown/ADR documents. scope=auto (current project + global), project, global, or all. Returns snippets; call doc_read for full content. Requires bootstrap.",
         "inputSchema": _schema(
-            {"context_version": CTX, "query": {"type": "string"}, "project_id": {"type": "string"}, "k": {"type": "integer", "minimum": 1, "maximum": 20}},
+            {"context_version": CTX, "query": {"type": "string"}, "project_id": {"type": "string"}, "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]}, "k": {"type": "integer", "minimum": 1, "maximum": 20}},
             ["context_version", "query"],
         ),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
@@ -238,9 +240,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "doc_list",
         "title": "List documents",
-        "description": "List documents attached to the current project and global scope. Requires bootstrap.",
+        "description": "List documents. scope=auto (current project + global), project, global, or all. Requires bootstrap.",
         "inputSchema": _schema(
-            {"context_version": CTX, "project_id": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}},
+            {"context_version": CTX, "project_id": {"type": "string"}, "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}},
             ["context_version"],
         ),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
@@ -248,14 +250,14 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "doc_read",
         "title": "Read document",
-        "description": "Read a document by document_id (or path). Requires bootstrap.",
-        "inputSchema": _schema({"context_version": CTX, "document_id": {"type": "string"}}, ["context_version", "document_id"]),
+        "description": "Read a document by document_id (or path). scope=all allows a document from another project. Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX, "document_id": {"type": "string"}, "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]}}, ["context_version", "document_id"]),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
     },
     {
         "name": "doc_add",
         "title": "Add/update document",
-        "description": "Attach a Markdown document to the current project. Requires bootstrap.",
+        "description": "Attach a Markdown document to the current project, or pass project_id='global' for a shared document. Requires bootstrap.",
         "inputSchema": _schema(
             {
                 "context_version": CTX,
@@ -497,6 +499,7 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 ctx,
                 args["query"],
                 project_id=args.get("project_id"),
+                scope=args.get("scope", "auto"),
                 k=int(args.get("k", 5)),
             )
         )
@@ -505,11 +508,12 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
             service.doc_list(
                 ctx,
                 project_id=args.get("project_id"),
+                scope=args.get("scope", "auto"),
                 limit=int(args.get("limit", 100)),
             )
         )
     if name == "doc_read":
-        return _ok(service.doc_read(ctx, args["document_id"]))
+        return _ok(service.doc_read(ctx, args["document_id"], scope=args.get("scope", "auto")))
     if name == "doc_add":
         return _ok(
             service.doc_add(

@@ -164,16 +164,18 @@ agent_bootstrap(project_path)
   ├─ identity               始终返回（全局人格/称呼/边界）
   ├─ global_directives      始终返回
   ├─ project                当前项目
-  ├─ global_memories        active，pinned 优先，最多 20 条
-  ├─ project_memories       当前项目 active，pinned/最近优先，最多 20 条
+  ├─ global_memories        active，pinned 优先，默认最多 20 条
+  ├─ project_memories       当前项目 active，pinned/最近优先，默认最多 20 条
   ├─ recent_decisions       最近决策
   ├─ recent_lessons         最近教训
   └─ capture_contract       什么时候该写
 ```
 
 - 不需要先搜索：`global_memories` / `project_memories` 直接在 bootstrap 返回。
-- 超过 20 条的全局/项目记忆不会自动注入，需要 `memory_search` 或 `memory_list`。
+- 超过 20 条的全局/项目记忆不会自动注入，需要 `memory_search` 或 `memory_list`。可用 `MEMBRIDGE_BOOTSTRAP_MEMORY_LIMIT` 调到最多 100；调大要自己承担 token 成本。
 - 文档/技能**不会**自动全文注入；bootstrap 只给计数，AI 需要时调用 `doc_search` / `doc_list` / `skill_list`。
+- 文档也分 project/global：`doc_add` 默认当前项目，`project_id="global"` 写全局；`doc_search` / `doc_list` / `doc_read` 支持 `scope=auto|project|global|all`，`all` 可跨项目搜索；UI 文档编辑器有作用域选择。
+- 搜索返回的是摘要：`memory_search` 返回完整短记忆 + 100 字 snippet；`doc_search` 只返回 100 字 snippet + `document_id`，需要原文再 `doc_read`。
 - 其他项目默认不注入；`memory_search(scope='all')` 或 `memory_list(project_id=...)` 才跨项目。
 - 注入的 `identity` + `global_memories` 是“同一个猫娘”的核心；项目记忆只负责当前上下文。
 
@@ -403,7 +405,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 31 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入、默认 admin 强制改密/会话/API token/静态 token 兼容。
+当前 32 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入、默认 admin 强制改密/会话/API token/静态 token 兼容。
 
 ## 文档
 

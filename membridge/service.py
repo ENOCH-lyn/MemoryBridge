@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import re
 import configparser
 import shutil
@@ -548,11 +549,16 @@ class AgentSyncService:
             },
         }
 
-    def _bootstrap_memories(self, project_id: str | None, limit: int = 20) -> list[dict[str, Any]]:
+    def _bootstrap_memories(self, project_id: str | None, limit: int | None = None) -> list[dict[str, Any]]:
+        if limit is None:
+            try:
+                limit = int(os.environ.get("MEMBRIDGE_BOOTSTRAP_MEMORY_LIMIT", "20"))
+            except ValueError:
+                limit = 20
         rows = self.conn.execute(
             "SELECT * FROM memories WHERE status = 'active' AND project_id IS ? "
             "ORDER BY pinned DESC, updated_at DESC LIMIT ?",
-            (project_id, max(1, min(int(limit), 50))),
+            (project_id, max(1, min(int(limit), 100))),
         ).fetchall()
         return [self._memory_dict(row) for row in rows]
 
@@ -1021,16 +1027,17 @@ class AgentSyncService:
         query: str,
         *,
         project_id: str | None = None,
+        scope: str = "auto",
         k: int = 5,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
+        if scope not in {"auto", "project", "global", "all"}:
+            raise ValueError("scope must be auto, project, global or all")
         selected = project_id if project_id is not None else session["project_id"]
         rows = self.conn.execute("SELECT * FROM documents ORDER BY updated_at DESC").fetchall()
         scored: list[tuple[float, Any]] = []
         for row in rows:
-            if selected and row["project_id"] not in {selected, None}:
-                continue
-            if not selected and row["project_id"] is not None:
+            if not self._doc_scope_allows(row["project_id"], selected, scope):
                 continue
             text = f"{row['title']}\n{row['content']}"
             score = _score(query, text, updated_at=row["updated_at"], item_type="reference")
@@ -1051,18 +1058,37 @@ class AgentSyncService:
                     "citation": f"[doc:{row['id']}]",
                 }
             )
-        return {"query": query, "items": items, "count": len(items)}
+        return {"query": query, "scope": scope, "items": items, "count": len(items)}
+
+    @staticmethod
+    def _doc_scope_allows(project_id: str | None, selected: str | None, scope: str) -> bool:
+        if scope == "all":
+            return True
+        if scope == "global":
+            return project_id is None
+        if scope == "project":
+            return project_id == selected
+        return project_id in {selected, None}
 
     def doc_list(
         self,
         context_version: str,
         *,
         project_id: str | None = None,
+        scope: str = "auto",
         limit: int = 100,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
+        if scope not in {"auto", "project", "global", "all"}:
+            raise ValueError("scope must be auto, project, global or all")
         selected = project_id if project_id is not None else session["project_id"]
-        if selected:
+        if scope == "all":
+            rows = self.conn.execute("SELECT * FROM documents ORDER BY updated_at DESC LIMIT ?", (max(1, min(limit, 200)),)).fetchall()
+        elif scope == "global":
+            rows = self.conn.execute("SELECT * FROM documents WHERE project_id IS NULL ORDER BY updated_at DESC LIMIT ?", (max(1, min(limit, 200)),)).fetchall()
+        elif scope == "project":
+            rows = self.conn.execute("SELECT * FROM documents WHERE project_id = ? ORDER BY updated_at DESC LIMIT ?", (selected, max(1, min(limit, 200)))).fetchall()
+        elif selected:
             rows = self.conn.execute(
                 "SELECT * FROM documents WHERE project_id = ? OR project_id IS NULL "
                 "ORDER BY updated_at DESC LIMIT ?",
@@ -1086,17 +1112,19 @@ class AgentSyncService:
                     "preview": preview,
                 }
             )
-        return {"items": items, "count": len(items)}
+        return {"items": items, "count": len(items), "scope": scope}
 
-    def doc_read(self, context_version: str, document_id: str) -> dict[str, Any]:
+    def doc_read(self, context_version: str, document_id: str, *, scope: str = "auto") -> dict[str, Any]:
         session = self.validate_context(context_version)
+        if scope not in {"auto", "project", "global", "all"}:
+            raise ValueError("scope must be auto, project, global or all")
         row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
         if row is None:
             row = self.conn.execute("SELECT * FROM documents WHERE path = ?", (document_id,)).fetchone()
         if row is None:
             raise ValueError(f"unknown document: {document_id}")
-        if row["project_id"] not in {session["project_id"], None}:
-            raise ValueError("document is outside the current project scope")
+        if not self._doc_scope_allows(row["project_id"], session["project_id"], scope):
+            raise ValueError("document is outside the current scope")
         return {
             "document_id": row["id"],
             "title": row["title"],

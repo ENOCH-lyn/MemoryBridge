@@ -127,7 +127,7 @@ skill_.../scripts/smoke.ps1
 
 ## 7. 测试与 UI
 
-- `python -X utf8 -m unittest discover -s tests -v` → **31 tests OK**（含默认 admin 强制改密、会话、API token、静态 token 兼容）
+- `python -X utf8 -m unittest discover -s tests -v` → **32 tests OK**（含默认 admin 强制改密、会话、API token、静态 token 兼容）
 - Headless Edge 渲染 `http://127.0.0.1:8788/`、`/#memory`、`/#identity`：只读页面正常；记忆显示 project/global、topic、rationale、conditions；身份页显示 persona 中的口癖。
 - 截图：`doc/assets/webui.png`。
 - Hub `/health` 200；服务端不配置 LLM。

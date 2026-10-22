@@ -8,6 +8,7 @@ services:
     environment:
       MEMBRIDGE_TOKEN: ${MEMBRIDGE_TOKEN:-}
       MEMBRIDGE_ADMIN_PASSWORD: ${MEMBRIDGE_ADMIN_PASSWORD:-}
+      MEMBRIDGE_BOOTSTRAP_MEMORY_LIMIT: ${MEMBRIDGE_BOOTSTRAP_MEMORY_LIMIT:-20}
       MEMBRIDGE_DB: /data/membridge.db
     volumes:
       - membridge-data:/data

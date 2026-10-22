@@ -42,7 +42,7 @@
 - Docker：非 root 用户 `membridge:10001`，只 `EXPOSE 8787`；公网 compose 不发布 8787。
 - 依赖：Python 标准库；`cryptography`/CodeMirror 无外部服务；CodeMirror 为本地 MIT 静态资源。
 - 秘密扫描：tracked files 未发现真实 API key/token；`.env` 被忽略。
-- 测试：31 tests OK；Playwright 覆盖登录/改密、记忆/文档新建、技能树编辑、身份保存、新建技能、改密码。
+- 测试：32 tests OK；Playwright 覆盖登录/改密、记忆/文档新建、技能树编辑、身份保存、新建技能、改密码。
 - 移动端：390px 视口 `scrollWidth=390`，无横向溢出；底部导航固定，长页面可滚动。
 
 ## 公网部署清单（必须逐项）

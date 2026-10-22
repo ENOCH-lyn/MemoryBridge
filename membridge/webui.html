@@ -708,6 +708,7 @@ async function openDocForm(id){
   openEditorDialog(id?'编辑文档':'新建文档',`<div class="form">
     <div class="form-row"><div class="field"><label for="fdPath">路径</label><input id="fdPath" value="${esc(doc.path||'docs/')}"></div>
     <div class="field"><label for="fdTitle">标题</label><input id="fdTitle" value="${esc(doc.title||'')}"></div></div>
+    <div class="field"><label for="fdScope">作用域</label><select id="fdScope"><option value="project" ${doc.project_id?'selected':''}>当前项目</option><option value="global" ${id&&!doc.project_id?'selected':''}>全局（所有项目可见）</option></select></div>
     <div class="field"><label for="fdContent">内容</label><textarea id="fdContent" rows="12">${esc(doc.content||'')}</textarea></div>
     <div class="inline"><button class="filled-btn" id="fdSave">保存</button>${id?'<button class="text-btn" id="fdDelete">删除</button>':''}<span class="hint" id="fdState"></span></div>
   </div>`);
@@ -715,7 +716,9 @@ async function openDocForm(id){
   $('#fdSave').onclick=async()=>{
     try{
       const path=$('#fdPath').value.trim(); if(!path) throw new Error('路径不能为空');
-      await rpc('doc_add',[state.ctx],{path,title:$('#fdTitle').value,content:cm.getValue()});
+      const kwargs={path,title:$('#fdTitle').value,content:cm.getValue()};
+      if($('#fdScope').value==='global') kwargs.project_id='global';
+      await rpc('doc_add',[state.ctx],kwargs);
       closeDialog(); await loadDocs(); snack('文档已保存');
     }catch(e){ $('#fdState').textContent=String(e.message); }
   };

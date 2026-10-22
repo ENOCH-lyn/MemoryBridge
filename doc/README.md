@@ -13,7 +13,7 @@
 | 架构 | [架构概览](架构/MemoryBridge-架构概览.md) | 组件、数据流、部署与待定项 | v0.2 |
 | 架构 | [ADR 架构决策文档](架构/MemoryBridge-ADR架构决策文档.md) | 17 条决策、备选、代价、验证与复审条件 | v0.1 |
 | 设计 | [MVP 实现说明](设计/MemoryBridge-MVP实现.md) | 数据模型、Bootstrap Gate、检索、MCP 协议与限制 | v0.1 |
-| 验收 | [AI 直接写入 / 隔离 Claude/Codex 验收](验收/MemoryBridge-自动化验收.md) | 隔离 Claude/Codex + 真实 LLM 通过 MCP 写记忆/改身份；项目隔离/全局注入；31 测试 | 2026-10-21 |
+| 验收 | [AI 直接写入 / 隔离 Claude/Codex 验收](验收/MemoryBridge-自动化验收.md) | 隔离 Claude/Codex + 真实 LLM 通过 MCP 写记忆/改身份；项目隔离/全局注入；32 测试 | 2026-10-21 |
 | 审计 | [部署前审计](验收/MemoryBridge-部署前审计.md) | 安全/功能/易用性/UI/部署；Go/No-Go 与公网清单 | 2026-10-22 |
 | 计划 | [12 周实施计划](计划/MemoryBridge-12周实施计划.md) | 里程碑、门槛、分工、预算、交付物 | 规划 |
 

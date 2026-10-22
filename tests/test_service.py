@@ -128,6 +128,17 @@ class ServiceTest(unittest.TestCase):
         self.svc.doc_delete(ctx, document_id)
         self.assertEqual(self.svc.doc_list(ctx)["count"], 0)
 
+    def test_documents_can_be_global_or_cross_project(self) -> None:
+        ctx_a = self.svc.bootstrap(project_path="doc-a")["context_version"]
+        ctx_b = self.svc.bootstrap(project_path="doc-b")["context_version"]
+        doc = self.svc.doc_add(ctx_a, path="docs/a.md", title="A", content="only alpha doc")
+        self.assertEqual(self.svc.doc_search(ctx_b, "alpha")["count"], 0)
+        found = self.svc.doc_search(ctx_b, "alpha", scope="all")
+        self.assertEqual(found["count"], 1)
+        self.assertEqual(self.svc.doc_read(ctx_b, doc["document_id"], scope="all")["title"], "A")
+        self.svc.doc_add(ctx_a, path="docs/shared.md", title="Shared", content="shared beta doc", project_id="global")
+        self.assertEqual(self.svc.doc_search(ctx_b, "beta")["count"], 1)
+
     def test_feedback_updates_confidence(self) -> None:
         ctx = self.svc.bootstrap()["context_version"]
         memory = self.svc.memory_add(ctx, "test fact", type="fact", confidence=0.8)
