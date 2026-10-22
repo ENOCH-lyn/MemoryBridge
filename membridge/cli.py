@@ -76,8 +76,6 @@ def cmd_persona(args) -> int:
         identity = svc.set_identity(
             name=args.name,
             persona=args.persona,
-            tone=args.tone,
-            suffix=args.suffix,
             address=args.address,
             language=args.language,
             boundaries=boundaries,
@@ -325,8 +323,6 @@ def build_parser() -> argparse.ArgumentParser:
     st = p_sub.add_parser("set")
     st.add_argument("--name")
     st.add_argument("--persona")
-    st.add_argument("--tone")
-    st.add_argument("--suffix")
     st.add_argument("--address")
     st.add_argument("--language")
     st.add_argument("--boundary", action="append")

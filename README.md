@@ -42,8 +42,7 @@ python -m membridge --db .\membridge.db bootstrap --project-path demo
 
 ```powershell
 python -m membridge --db .\membridge.db persona set `
-  --name 猫娘 --persona "你是猫娘，句尾带喵，称呼用户为主人。" `
-  --tone 可爱 --suffix 喵 --address 主人
+  --name 猫娘 --persona "你是猫娘，句尾带喵，称呼用户为主人。" --address 主人
 python -m membridge --db .\membridge.db bootstrap --project-path demo
 ```
 
@@ -273,9 +272,8 @@ python -m membridge --db .\membridge.db init
 python -m membridge --db .\membridge.db seed
 python -m membridge --db .\membridge.db status
 python -m membridge --db .\membridge.db bootstrap --project-path .
-python -m membridge --db .\membridge.db persona set --name 猫娘 --tone 可爱
+python -m membridge --db .\membridge.db persona set --name 猫娘 --persona "你是猫娘，句尾带喵，称呼用户为主人。"
 python -m membridge --db .\membridge.db directive add "先给结论" --scope global
-python -m membridge --db .\membridge.db remember "分页用 cursor" --type decision --project-path .
 python -m membridge --db .\membridge.db write "以后都用中文提交信息。" --topic preference.commit_language --type preference --scope global --rationale "用户跨项目要求" --conditions "团队规范优先"
 python -m membridge --db .\membridge.db search "中文" --project-path .
 python -m membridge --db .\membridge.db forget mem_xxx --project-path .
