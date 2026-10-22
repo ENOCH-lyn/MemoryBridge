@@ -1416,23 +1416,32 @@ class AgentSyncService:
         context_version: str,
         *,
         project_id: str | None = None,
+        scope: str = "auto",
         query: str | None = None,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
+        if scope not in {"auto", "project", "global", "all"}:
+            raise ValueError("scope must be auto, project, global or all")
         selected = project_id if project_id is not None else session["project_id"]
         rows = self.conn.execute("SELECT * FROM skills ORDER BY updated_at DESC").fetchall()
         items = []
         for row in rows:
-            if selected and row["project_id"] not in {selected, None}:
-                continue
-            if not selected and row["project_id"] is not None:
+            if scope == "all":
+                allowed = True
+            elif scope == "global":
+                allowed = row["project_id"] is None
+            elif scope == "project":
+                allowed = row["project_id"] == selected
+            else:
+                allowed = row["project_id"] in {selected, None}
+            if not allowed:
                 continue
             if query:
                 text = f"{row['name']}\n{row['trigger']}\n{' '.join(json_loads(row['steps_json'], []))}"
                 if _score(query, text, updated_at=row["updated_at"], item_type="procedure") <= 0:
                     continue
             items.append(self._skill_dict(row))
-        return {"items": items, "count": len(items)}
+        return {"items": items, "count": len(items), "scope": scope}
 
     def skill_get(self, context_version: str, skill_id: str) -> dict[str, Any]:
         session = self.validate_context(context_version)

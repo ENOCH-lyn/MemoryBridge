@@ -243,7 +243,7 @@ python -m membridge --db .\data\membridge-local.db hub --host 127.0.0.1 --port 8
 admin / admin
 ```
 
-首次登录会强制改密；改密后重新建立会话。控制台默认项目是 `demo`；在「连接」里改成你自己的项目路径即可。数据库在 `data/membridge-local.db`，删除即可重置。
+首次登录会强制改密；改密后重新建立会话。控制台默认「全部项目」，顶部可按「全部 / 仅全局 / 具体项目」筛选；不再需要手填项目路径。数据库在 `data/membridge-local.db`，删除即可重置。
 
 内容既可由 agent 在你说出持久要求时通过 MCP 直接写入，也可以在这个控制台里新建/编辑/删除；UI 不再是只读。
 
@@ -271,7 +271,7 @@ http://HUB_IP:8787/
 - **技能**：新建/上传文件夹/删除；左侧目录树，右侧 CodeMirror 编辑并保存单个文件。
 - **身份**：编辑名字、称呼、persona、边界；口癖写在 persona 里。
 - **活动**：audit log 中的 memory/doc/skill/identity 写入记录。
-- **连接**：登录态、项目路径、MCP 配置片段、JSON 导出、健康检查、API token、修改密码。
+- **连接**：登录态、MCP 配置片段、JSON 导出、健康检查、API token、修改密码；项目筛选在顶栏。
 
 页面是单文件 HTML/CSS/JS，由 Hub 直接提供，不需要 Node 构建，也不依赖外部 CDN。
 

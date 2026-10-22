@@ -277,8 +277,8 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "skill_list",
         "title": "List skills",
-        "description": "List folder-shaped skills for the current project and global scope, including file counts. Requires bootstrap.",
-        "inputSchema": _schema({"context_version": CTX, "project_id": {"type": "string"}, "query": {"type": "string"}}, ["context_version"]),
+        "description": "List folder-shaped skills. scope=auto (current project + global), project, global, or all. Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX, "project_id": {"type": "string"}, "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]}, "query": {"type": "string"}}, ["context_version"]),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
     },
     {
@@ -539,7 +539,7 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
     if name == "doc_delete":
         return _ok(service.doc_delete(ctx, args["document_id"]))
     if name == "skill_list":
-        return _ok(service.skill_list(ctx, project_id=args.get("project_id"), query=args.get("query")))
+        return _ok(service.skill_list(ctx, project_id=args.get("project_id"), scope=args.get("scope", "auto"), query=args.get("query")))
     if name == "skill_get":
         return _ok(service.skill_get(ctx, args["skill_id"]))
     if name == "skill_add":

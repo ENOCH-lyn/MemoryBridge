@@ -177,6 +177,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 .search-field input{width:100%;height:40px;box-sizing:border-box;background:var(--md-surface-container-highest);
   border:0;border-bottom:1px solid var(--md-outline);border-radius:4px 4px 0 0;padding:0 14px;outline:none;color:var(--md-on-surface)}
 .search-field input:focus{border-bottom:2px solid var(--md-primary)}
+.project-filter{height:40px;border:0;border-radius:8px;background:var(--md-surface-container-highest);color:var(--md-on-surface);padding:0 10px;max-width:190px}
 [data-theme="dark"] .CodeMirror{background:var(--md-surface-container-highest);color:var(--md-on-surface)}
 [data-theme="dark"] .CodeMirror-gutters{background:var(--md-surface-container-high);border-color:var(--md-outline-variant);color:var(--md-on-surface-variant)}
 [data-theme="dark"] .CodeMirror-cursor{border-left-color:var(--md-on-surface)}
@@ -260,6 +261,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
       <div><h1 id="pageTitle">概览</h1><p class="sub" id="pageSub"></p></div>
       <div class="top-actions">
         <span class="chip" id="ctxBadge">未 bootstrap</span>
+        <select id="projectFilter" class="project-filter" aria-label="项目筛选"><option value="">全部项目</option><option value="global">仅全局</option></select>
         <button class="text-btn" id="logoutTop">退出登录</button>
         <button class="icon-btn" id="refreshBtn" aria-label="刷新"><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0012 4a8 8 0 108 8h-2a6 6 0 11-1.76-4.24L13 11h7V4l-2.35 2.35z"/></svg></button>
         <button class="icon-btn" data-tab="settings" aria-label="连接"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 00.12-.64l-1.92-3.32a.5.5 0 00-.61-.22l-2.39.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.5.5 0 00-.5-.42h-3.84a.5.5 0 00-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 00-.61.22L2.74 8.84a.5.5 0 00.12.64l2.03 1.58c-.05.3-.07.63-.07.94s.02.64.07.94l-2.03 1.58a.5.5 0 00-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 00-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg></button>
@@ -356,15 +358,9 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
         <div class="grid-2">
           <div class="card">
             <h2 class="section-title">连接</h2>
-            <p class="section-sub">登录后使用同源会话；静态 Bearer token 仅作兼容，MCP 请用下方 API token。</p>
             <div class="form">
               <div class="field"><label for="setHub">Hub URL</label><input id="setHub" readonly></div>
-              <div class="field"><label for="setProject">网页当前项目（可留空）</label><input id="setProject" placeholder="只影响这个网页；留空=只显示全局"></div>
-              <p class="hint">这里只决定网页的 bootstrap 项目，不会改 MCP 客户端的 --project。公网 Hub 读不到你电脑上的路径，填一个双方约定的稳定标识即可。</p>
-              <div class="field"><label for="setToken">旧版全局 token（一般留空）</label><input id="setToken" type="password" placeholder="仅当 Hub 设置了 MEMBRIDGE_TOKEN 时才用"></div>
-              <p class="hint">这不是 API token。MCP 请用下方「API token / MCP 鉴权」创建的 mb_ 开头 token；当前公网 Hub 没有设置静态 MEMBRIDGE_TOKEN。</p>
-              <div class="inline"><button class="filled-btn" id="setSave">保存并重连</button><button class="text-btn" id="setClear">清除 token</button></div>
-              <p class="hint" id="setState"></p>
+              <p class="hint">网页使用登录会话；项目筛选在顶部「全部项目 / 仅全局 / 具体项目」。MCP 使用下方 API token，项目由客户端 --project 决定。</p>
             </div>
           </div>
           <div class="card">
@@ -435,9 +431,8 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => Array.from(root.querySelectorAll(s));
 const state = {
-  token: localStorage.getItem('mb_token') || '',
-  project: localStorage.getItem('mb_project') || '',
-  ctx: null, status: null, identity: null, tab: 'overview', username: '',
+  filterProject: '',
+  ctx: null, status: null, identity: null, tab: 'overview', username: '', projects: [], memories: [],
 };
 const titles = {
   overview:['概览','同一个 agent，换设备不重来'],
@@ -458,7 +453,6 @@ function snack(msg, kind='ok'){
 }
 async function rpc(method, args=[], kwargs={}){
   const headers={'Content-Type':'application/json'};
-  if (state.token) headers['Authorization']='Bearer ' + state.token;
   const res=await fetch('/rpc',{method:'POST',headers,body:JSON.stringify({method,args,kwargs})});
   let data;
   try{ data=await res.json(); }catch(e){ const err=new Error('Hub 返回非 JSON（HTTP '+res.status+'）'); err.status=res.status; throw err; }
@@ -487,8 +481,7 @@ function showAuth(mode='login'){
 }
 function hideAuth(){ $('#authGate').classList.add('hidden'); }
 async function checkAuth(){
-  const headers=state.token?{'Authorization':'Bearer '+state.token}:{};
-  const res=await fetch('/me',{headers});
+  const res=await fetch('/me');
   let data; try{ data=await res.json(); }catch(e){ data={}; }
   if(!res.ok){ showAuth('login'); return false; }
   const result=data.result||{};
@@ -528,7 +521,6 @@ async function logout(){
   }catch(e){
     snack('退出失败：'+String(e.message),'err'); return;
   }
-  state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value='';
   state.ctx=null; state.username='';
   window.location.replace('/');
 }
@@ -562,28 +554,37 @@ async function revokeToken(id){
   }catch(e){ snack(String(e.message),'err'); }
 }
 
-function saveSettings(){
-  state.token=$('#setToken').value.trim(); state.project=$('#setProject').value.trim();
-  localStorage.setItem('mb_token',state.token); localStorage.setItem('mb_project',state.project);
-}
 function mcpSnippet(){
-  const args=['serve','--remote',location.origin];
-  if(state.token) args.push('--token','<SERVICE_TOKEN>');
-  else args.push('--token','<API_TOKEN>');
-  args.push('--project',state.project||'<PROJECT_PATH>');
+  const args=['serve','--remote',location.origin,'--token','<API_TOKEN>','--project','<PROJECT_PATH>'];
   return JSON.stringify({mcpServers:{membridge:{command:'membridge',args}}}, null, 2);
 }
 async function bootstrap(){
-  const data=await rpc('bootstrap',[],{project_path:state.project||null,client:'web'});
+  const data=await rpc('bootstrap',[],{client:'web'});
   state.ctx=data.context_version; state.identity=data.identity; state.available=data.available||null; state.projects=data.projects||[]; state.globalMemories=data.global_memories||[]; state.projectMemories=data.project_memories||[];
-  if(state.project && !state.projects.some(p=>p.path===state.project || p.key===state.project)){
-    state.project=''; localStorage.removeItem('mb_project'); $('#setProject').value='';
-    return bootstrap();
-  }
+  populateProjectFilter();
   $('#ctxBadge').textContent='ctx '+state.ctx.slice(4,12);
   $('#ctxBadge').className='chip ok';
   renderOverview();
   return data;
+}
+function populateProjectFilter(){
+  const select=$('#projectFilter'); if(!select) return;
+  const valid=new Set(['','global',...(state.projects||[]).map(p=>p.id)]);
+  if(!valid.has(state.filterProject)) state.filterProject='';
+  const options=['<option value="">全部项目</option>','<option value="global">仅全局</option>'];
+  for(const p of (state.projects||[])) options.push(`<option value="${esc(p.id)}">${esc(p.name)}</option>`);
+  select.innerHTML=options.join('');
+  select.value=state.filterProject;
+}
+function projectLabel(projectId){
+  if(!projectId) return 'global';
+  const p=(state.projects||[]).find(x=>x.id===projectId);
+  return p?p.name:projectId;
+}
+function scopeFilter(){
+  if(!state.filterProject) return {scope:'all', projectId:null};
+  if(state.filterProject==='global') return {scope:'global', projectId:null};
+  return {scope:'project', projectId:state.filterProject};
 }
 async function refreshStatus(){
   try{
@@ -625,7 +626,7 @@ function renderOverview(){
   badgeMem.hidden=!active; badgeMem.textContent=active;
   const projects=state.projects||[];
   $('#ovProjectsList').innerHTML=projects.length?projects.slice(0,6).map(p=>`<div class="item"><div class="inline" style="justify-content:space-between"><b>${esc(p.name)}</b><button class="text-btn" data-action="delete-project" data-id="${esc(p.id)}">删除</button></div><div class="hint">${esc(p.path||'')}</div><div class="hint">${esc(p.key||'')} · ${esc(p.memories||0)} 记忆</div></div>`).join(''):'<div class="empty">还没有项目</div>';
-  $('#ovProjectCounts').textContent=`全局 ${ (state.globalMemories||[]).length } · 当前项目 ${ (state.projectMemories||[]).length }`;
+  $('#ovProjectCounts').textContent=`全局 ${ (state.globalMemories||[]).length } · 项目 ${ projects.reduce((sum,p)=>sum+Number(p.memories||0),0) }`;
   $('#ctxBadge').textContent=state.ctx?'ctx '+state.ctx.slice(4,12):'未 bootstrap';
   $('#ctxBadge').className='chip '+(state.ctx?'ok':'');
 }
@@ -649,7 +650,11 @@ function memoryHTML(m){
 async function loadMemories(){
   if(!state.ctx) return;
   const q=$('#memQuery').value.trim();
-  const data=q?await rpc('memory_search',[state.ctx,q],{k:30}):await rpc('memory_list',[state.ctx],{status:'active',limit:100});
+  const f=scopeFilter(); const kwargs={scope:f.scope};
+  if(f.projectId) kwargs.project_id=f.projectId;
+  const data=q
+    ? await rpc('memory_search',[state.ctx,q],{...kwargs,k:30})
+    : await rpc('memory_list',[state.ctx],{...kwargs,status:'active',limit:100});
   const items=data.items||[];
   state.memories=items;
   $('#memList').innerHTML=items.length?items.map(m=>memoryHTML(m)).join(''):'<div class="empty">没有匹配的记忆</div>';
@@ -663,13 +668,17 @@ async function loadActivity(){
 }
 async function loadDocs(){
   if(!state.ctx) return;
-  const data=await rpc('doc_list',[state.ctx]); const items=data.items||[];
-  $('#docList').innerHTML=items.length?items.map(d=>`<div class="item"><div class="row-meta"><span class="type">${d.project_id?'project':'global'}</span><span class="hint">${esc(d.path)}</span></div><div class="text"><b>${esc(d.title)}</b></div><div class="hint" style="margin-top:6px">${esc(d.preview)}</div><div class="actions"><button class="text-btn" data-action="edit-doc" data-id="${esc(d.document_id)}">编辑</button><button class="text-btn" data-action="delete-doc" data-id="${esc(d.document_id)}">删除</button></div></div>`).join(''):'<div class="empty">没有文档</div>';
+  const f=scopeFilter(); const kwargs={scope:f.scope};
+  if(f.projectId) kwargs.project_id=f.projectId;
+  const data=await rpc('doc_list',[state.ctx],kwargs); const items=data.items||[];
+  $('#docList').innerHTML=items.length?items.map(d=>`<div class="item"><div class="row-meta"><span class="type">${d.project_id?'project':'global'}</span><span class="type">${esc(projectLabel(d.project_id))}</span><span class="hint">${esc(d.path)}</span></div><div class="text"><b>${esc(d.title)}</b></div><div class="hint" style="margin-top:6px">${esc(d.preview)}</div><div class="actions"><button class="text-btn" data-action="edit-doc" data-id="${esc(d.document_id)}">编辑</button><button class="text-btn" data-action="delete-doc" data-id="${esc(d.document_id)}">删除</button></div></div>`).join(''):'<div class="empty">没有文档</div>';
 }
 async function loadSkills(){
   if(!state.ctx) return;
-  const data=await rpc('skill_list',[state.ctx]); const items=data.items||[];
-  $('#skillList').innerHTML=items.length?items.map(s=>`<div class="item"><div class="row-meta"><span class="type">folder</span><span class="type ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="hint">${esc(s.file_count||1)} files</span></div><div class="text"><b>${esc(s.name)}</b></div><div class="quote">${esc(s.description||s.trigger||'')}</div><div class="actions"><button class="text-btn" data-action="read-skill" data-id="${esc(s.id)}">打开 / 编辑</button><button class="text-btn" data-action="delete-skill" data-id="${esc(s.id)}">删除</button></div></div>`).join(''):'<div class="empty">还没有技能文件夹</div>';
+  const f=scopeFilter(); const kwargs={scope:f.scope};
+  if(f.projectId) kwargs.project_id=f.projectId;
+  const data=await rpc('skill_list',[state.ctx],kwargs); const items=data.items||[];
+  $('#skillList').innerHTML=items.length?items.map(s=>`<div class="item"><div class="row-meta"><span class="type">folder</span><span class="type ${s.status==='validated'?'decision':'candidate'}">${esc(s.status)}</span><span class="type">${s.project_id?'project':'global'}</span><span class="hint">${esc(projectLabel(s.project_id))} · ${esc(s.file_count||1)} files</span></div><div class="text"><b>${esc(s.name)}</b></div><div class="quote">${esc(s.description||s.trigger||'')}</div><div class="actions"><button class="text-btn" data-action="read-skill" data-id="${esc(s.id)}">打开 / 编辑</button><button class="text-btn" data-action="delete-skill" data-id="${esc(s.id)}">删除</button></div></div>`).join(''):'<div class="empty">还没有技能文件夹</div>';
 }
 async function loadTab(tab){
   try{
@@ -710,29 +719,36 @@ function makeEditor(textarea, mode='markdown'){
 }
 async function openMemoryForm(id){
   const m=id?(state.memories||[]).find(x=>x.id===id):null;
-  const scope=m?(!m.project_id?'global':'project'):(state.project?'project':'global');
+  const scoped=m?(!m.project_id?'global':'project'):(state.filterProject==='global'||!state.projects.length?'global':'project');
+  const projectId=m?.project_id || (state.filterProject && state.filterProject!=='global' ? state.filterProject : (state.projects[0]?.id||''));
   const types=['fact','preference','decision','lesson','procedure','reference'];
+  const projectOptions=(state.projects||[]).map(p=>`<option value="${esc(p.id)}" ${p.id===projectId?'selected':''}>${esc(p.name)}</option>`).join('');
   openEditorDialog(m?'编辑记忆':'新建记忆',`<div class="form">
     <div class="field"><label for="fmContent">内容</label><textarea id="fmContent" rows="4">${esc(m?.content||'')}</textarea></div>
     <div class="form-row">
       <div class="field"><label for="fmType">类型</label><select id="fmType">${types.map(t=>`<option value="${t}" ${m?.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
-      <div class="field"><label for="fmScope">作用域</label><select id="fmScope"><option value="project" ${scope==='project'?'selected':''}>当前项目</option><option value="global" ${scope==='global'?'selected':''}>全局</option></select></div>
+      <div class="field"><label for="fmScope">作用域</label><select id="fmScope"><option value="project" ${scoped==='project'?'selected':''}>项目</option><option value="global" ${scoped==='global'?'selected':''}>全局</option></select></div>
     </div>
+    <div class="field"><label for="fmProject">归属项目</label><select id="fmProject" ${scoped==='global'?'disabled':''}>${projectOptions||'<option value="">没有项目</option>'}</select></div>
     <div class="field"><label for="fmTopic">topic（稳定标识，编辑时不要随便改）</label><input id="fmTopic" value="${esc(m?.topic||'')}" placeholder="例如 decision.storage"></div>
     <div class="field"><label for="fmRationale">为什么 / rationale</label><textarea id="fmRationale" rows="2">${esc(m?.rationale||'')}</textarea></div>
     <div class="field"><label for="fmConditions">适用条件</label><input id="fmConditions" value="${esc(m?.conditions||'')}" placeholder="换项目就不适用？写清楚"></div>
     <label class="inline" style="gap:8px"><input type="checkbox" id="fmPinned" ${m?.pinned?'checked':''} style="width:auto"> 置顶 / 每次 bootstrap 自动注入</label>
     <div class="inline"><button class="filled-btn" id="fmSave">保存</button><span class="hint" id="fmState"></span></div>
   </div>`);
+  $('#fmScope').onchange=()=>{ $('#fmProject').disabled=$('#fmScope').value==='global'; };
   $('#fmSave').onclick=async()=>{
     try{
       const topic=$('#fmTopic').value.trim();
       if(!topic) throw new Error('topic 不能为空');
-      await rpc('memory_write',[state.ctx],{
+      const scope=$('#fmScope').value;
+      const kwargs={
         content:$('#fmContent').value, type:$('#fmType').value, topic,
-        scope:$('#fmScope').value, rationale:$('#fmRationale').value,
+        scope, rationale:$('#fmRationale').value,
         conditions:$('#fmConditions').value, pinned:$('#fmPinned').checked,
-      });
+      };
+      if(scope==='project') kwargs.project_id=$('#fmProject').value;
+      await rpc('memory_write',[state.ctx],kwargs);
       closeDialog(); await refreshAll(); snack('记忆已保存');
     }catch(e){ $('#fmState').textContent=String(e.message); }
   };
@@ -740,20 +756,24 @@ async function openMemoryForm(id){
 async function openDocForm(id){
   let doc={title:'',path:'docs/',content:''};
   if(id){ doc=await rpc('doc_read',[state.ctx,id]); }
-  const globalDoc=!state.project || (!!id && !doc.project_id);
+  const projectId=doc.project_id || (state.filterProject && state.filterProject!=='global' ? state.filterProject : (state.projects[0]?.id||''));
+  const globalDoc=(!!id && !doc.project_id) || state.filterProject==='global' || !state.projects.length;
+  const projectOptions=(state.projects||[]).map(p=>`<option value="${esc(p.id)}" ${p.id===projectId?'selected':''}>${esc(p.name)}</option>`).join('');
   openEditorDialog(id?'编辑文档':'新建文档',`<div class="form">
     <div class="form-row"><div class="field"><label for="fdPath">路径</label><input id="fdPath" value="${esc(doc.path||'docs/')}"></div>
     <div class="field"><label for="fdTitle">标题</label><input id="fdTitle" value="${esc(doc.title||'')}"></div></div>
-    <div class="field"><label for="fdScope">作用域</label><select id="fdScope"><option value="project" ${!globalDoc?'selected':''}>当前项目</option><option value="global" ${globalDoc?'selected':''}>全局（所有项目可见）</option></select></div>
+    <div class="form-row"><div class="field"><label for="fdScope">作用域</label><select id="fdScope"><option value="project" ${!globalDoc?'selected':''}>项目</option><option value="global" ${globalDoc?'selected':''}>全局（所有项目可见）</option></select></div>
+    <div class="field"><label for="fdProject">归属项目</label><select id="fdProject" ${globalDoc?'disabled':''}>${projectOptions||'<option value="">没有项目</option>'}</select></div></div>
     <div class="field"><label for="fdContent">内容</label><textarea id="fdContent" rows="12">${esc(doc.content||'')}</textarea></div>
     <div class="inline"><button class="filled-btn" id="fdSave">保存</button>${id?'<button class="text-btn" id="fdDelete">删除</button>':''}<span class="hint" id="fdState"></span></div>
   </div>`);
   makeEditor($('#fdContent'),'markdown');
+  $('#fdScope').onchange=()=>{ $('#fdProject').disabled=$('#fdScope').value==='global'; };
   $('#fdSave').onclick=async()=>{
     try{
       const path=$('#fdPath').value.trim(); if(!path) throw new Error('路径不能为空');
       const kwargs={path,title:$('#fdTitle').value,content:cm.getValue()};
-      if($('#fdScope').value==='global') kwargs.project_id='global';
+      if($('#fdScope').value==='project') kwargs.project_id=$('#fdProject').value;
       await rpc('doc_add',[state.ctx],kwargs);
       closeDialog(); await loadDocs(); snack('文档已保存');
     }catch(e){ $('#fdState').textContent=String(e.message); }
@@ -937,16 +957,15 @@ $('#docUpload').addEventListener('change',async e=>{
 $('#memSearch').addEventListener('click',()=>loadMemories().catch(e=>snack(String(e.message),'err')));
 $('#memQuery').addEventListener('keydown',e=>{if(e.key==='Enter') loadMemories().catch(err=>snack(String(err.message),'err'));});
 $('#memReload').addEventListener('click',()=>{$('#memQuery').value=''; loadMemories().catch(e=>snack(String(e.message),'err'));});
+$('#projectFilter').addEventListener('change',e=>{ state.filterProject=e.target.value; loadTab(state.tab).catch(err=>snack(String(err.message),'err')); });
 $('#docReload').addEventListener('click',()=>loadDocs().catch(e=>snack(String(e.message),'err')));
 $('#skillReload').addEventListener('click',()=>loadSkills().catch(e=>snack(String(e.message),'err')));
-$('#setSave').addEventListener('click',async()=>{ saveSettings(); await refreshAll(); });
-$('#setClear').addEventListener('click',async()=>{ state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value=''; snack('token 已清除'); await health(); });
 $('#copySnippet').addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(mcpSnippet()); snack('已复制'); }catch(e){ snack('复制失败，请手动选择','err'); } });
 $('#healthBtn').addEventListener('click',health);
 $('#exportBtn').addEventListener('click',async()=>{
   try{
-    const headers=state.token?{'Authorization':'Bearer '+state.token}:{};
-    const res=await fetch('/export',{headers}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const res=await fetch('/export');
+    if(!res.ok) throw new Error('HTTP '+res.status);
     const blob=await res.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='membridge-export.json'; a.click(); URL.revokeObjectURL(a.href);
   }catch(e){ snack(String(e.message),'err'); }
 });
@@ -961,8 +980,8 @@ document.addEventListener('click',async e=>{
       const project=(state.projects||[]).find(p=>p.id===id);
       if(!confirm('软删除项目「'+(project?.name||id)+'」？项目会从列表隐藏，记忆/文档/技能数据仍保留。')) return;
       await rpc('project_delete',[state.ctx,id]);
-      if(project && (project.path===state.project || project.key===state.project)){
-        state.project=''; localStorage.removeItem('mb_project'); $('#setProject').value='';
+      if(project && project.id===state.filterProject){
+        state.filterProject='';
       }
       await refreshAll(); snack('项目已软删除');
     }
@@ -986,7 +1005,7 @@ document.addEventListener('click',async e=>{
 
 // boot
 initTheme();
-$('#setToken').value=state.token; $('#setProject').value=state.project; $('#setHub').value=location.origin;
+$('#setHub').value=location.origin;
 $('#mcpSnippet').textContent=mcpSnippet();
 const initialTab=location.hash.slice(1);
 if(titles[initialTab]) switchTab(initialTab,false);
