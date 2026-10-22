@@ -1,0 +1,34 @@
+services:
+  hub:
+    build: .
+    container_name: membridge-hub
+    restart: unless-stopped
+    environment:
+      MEMBRIDGE_DB: /data/membridge.db
+      MEMBRIDGE_COOKIE_SECURE: "1"
+      MEMBRIDGE_TRUST_PROXY: "1"
+    volumes:
+      - membridge-data:/data
+    expose:
+      - "8787"
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: membridge-caddy
+    restart: unless-stopped
+    depends_on:
+      - hub
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to your public hostname, e.g. memory.example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  membridge-data:
+  caddy-data:
+  caddy-config:

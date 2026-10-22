@@ -6,7 +6,7 @@ services:
     ports:
       - "8787:8787"
     environment:
-      MEMBRIDGE_TOKEN: ${MEMBRIDGE_TOKEN:?set MEMBRIDGE_TOKEN in .env or the shell}
+      MEMBRIDGE_TOKEN: ${MEMBRIDGE_TOKEN:-}
       MEMBRIDGE_DB: /data/membridge.db
     volumes:
       - membridge-data:/data

@@ -158,6 +158,17 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
   font-size:13px;z-index:60;box-shadow:0 2px 8px var(--md-shadow);transition:.18s;max-width:min(560px,90vw)}
 .snackbar.show{opacity:1;transform:translate(-50%,0)}
 .snackbar.err{background:var(--md-error);color:var(--md-on-error)}
+.auth-gate{position:fixed;inset:0;z-index:100;background:var(--md-surface);display:grid;place-items:center;padding:24px}
+.auth-gate.hidden{display:none}
+.hidden{display:none!important}
+.auth-card{width:min(420px,100%);background:var(--md-surface-container-low);border-radius:var(--radius-l);
+  padding:28px;box-shadow:0 8px 32px var(--md-shadow)}
+.auth-brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.auth-brand .logo{width:40px;height:40px;border-radius:12px;background:var(--md-primary-container);
+  color:var(--md-on-primary-container);display:grid;place-items:center;font-weight:800}
+.auth-card h2{font-size:22px;line-height:28px;font-weight:500;margin:0 0 4px}
+.auth-card .hint{margin:0 0 18px}
+.auth-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}
 @media(max-width:1080px){.grid-3{grid-template-columns:1fr 1fr}.grid-2{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}
 @media(max-width:760px){
   .app{grid-template-columns:1fr;padding-bottom:76px}
@@ -176,6 +187,30 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 </style>
 </head>
 <body>
+<div class="auth-gate hidden" id="authGate">
+  <div class="auth-card">
+    <div class="auth-brand"><div class="logo">M</div><div><b>忆桥</b><div class="hint" style="margin:0">MEMORYBRIDGE</div></div></div>
+    <div id="loginPane">
+      <h2>登录</h2>
+      <p class="hint">默认账号 <b>admin</b>，默认密码 <b>admin</b>；首次登录必须改密。</p>
+      <div class="form">
+        <div class="field"><label for="loginUser">用户名</label><input id="loginUser" autocomplete="username" value="admin"></div>
+        <div class="field"><label for="loginPass">密码</label><input id="loginPass" type="password" autocomplete="current-password"></div>
+        <div class="auth-actions"><span class="hint" id="loginError"></span><button class="filled-btn" id="loginBtn">登录</button></div>
+      </div>
+    </div>
+    <div id="passwordPane" class="hidden">
+      <h2>首次登录，请改密码</h2>
+      <p class="hint">改密后会重新建立会话；默认密码不能继续使用。</p>
+      <div class="form">
+        <div class="field"><label for="pwCurrent">当前密码</label><input id="pwCurrent" type="password" autocomplete="current-password"></div>
+        <div class="field"><label for="pwNew">新密码（至少 8 位）</label><input id="pwNew" type="password" autocomplete="new-password"></div>
+        <div class="field"><label for="pwConfirm">确认新密码</label><input id="pwConfirm" type="password" autocomplete="new-password"></div>
+        <div class="auth-actions"><span class="hint" id="pwError"></span><button class="filled-btn" id="pwBtn">保存新密码</button></div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="app">
   <aside class="rail">
     <div class="brand" aria-hidden="true">M</div>
@@ -310,10 +345,10 @@ identity_update(persona="猫娘，句尾带喵…")</div>
         <div class="grid-2">
           <div class="card">
             <h2 class="section-title">连接</h2>
-            <p class="section-sub">页面由 Hub 提供，默认同源调用；本地无 token 模式可留空。</p>
+            <p class="section-sub">登录后使用同源会话；静态 Bearer token 仅作兼容，MCP 请用下方 API token。</p>
             <div class="form">
               <div class="field"><label for="setHub">Hub URL</label><input id="setHub" readonly></div>
-              <div class="field"><label for="setToken">Bearer token</label><input id="setToken" type="password" placeholder="云端 Hub 的 MEMBRIDGE_TOKEN"></div>
+              <div class="field"><label for="setToken">静态服务 token（可选）</label><input id="setToken" type="password" placeholder="兼容 MEMBRIDGE_TOKEN，可留空"></div>
               <div class="field"><label for="setProject">默认项目路径</label><input id="setProject" placeholder="本地测试默认 demo；填你的项目路径"></div>
               <div class="inline"><button class="filled-btn" id="setSave">保存并重连</button><button class="text-btn" id="setClear">清除 token</button></div>
               <p class="hint" id="setState"></p>
@@ -321,12 +356,26 @@ identity_update(persona="猫娘，句尾带喵…")</div>
           </div>
           <div class="card">
             <h2 class="section-title">MCP 客户端配置</h2>
-            <p class="section-sub">所有设备连同一个 Hub；本地 proxy 负责 stdio。</p>
+            <p class="section-sub">所有设备连同一个 Hub；本地 proxy 负责 stdio。公网只开一个 HTTPS 端口。</p>
             <div class="code" id="mcpSnippet"></div>
             <div class="inline" style="margin-top:12px"><button class="tonal-btn" id="copySnippet">复制</button><button class="outlined-btn" id="exportBtn">导出 JSON</button></div>
             <hr class="divider">
             <h2 class="section-title">健康检查</h2>
             <div class="inline"><button class="tonal-btn" id="healthBtn">检查</button><span class="hint" id="healthState"></span></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="inline" style="justify-content:space-between;align-items:flex-start">
+            <div><h2 class="section-title">API token / MCP 鉴权</h2><p class="section-sub">MCP proxy 用 Bearer token；token 只显示一次，存到你的 MCP 客户端配置里。</p></div>
+            <button class="text-btn" id="logoutBtn">退出登录</button>
+          </div>
+          <div class="form" style="margin-top:12px">
+            <div class="form-row">
+              <div class="field"><label for="tokenName">token 名称</label><input id="tokenName" placeholder="我的笔记本 / Claude Code"></div>
+              <div class="inline" style="align-items:flex-end"><button class="filled-btn" id="tokenCreate">创建 API token</button></div>
+            </div>
+            <div class="code hidden" id="tokenNew"></div>
+            <div class="list" id="tokenList"><div class="empty">加载中…</div></div>
           </div>
         </div>
       </section>
@@ -367,9 +416,9 @@ async function rpc(method, args=[], kwargs={}){
   if (state.token) headers['Authorization']='Bearer ' + state.token;
   const res=await fetch('/rpc',{method:'POST',headers,body:JSON.stringify({method,args,kwargs})});
   let data;
-  try{ data=await res.json(); }catch(e){ throw new Error('Hub 返回非 JSON（HTTP '+res.status+'）'); }
-  if(!res.ok) throw new Error(data?.error?.message || ('HTTP '+res.status));
-  if(!data.ok) throw new Error(data?.error?.message || 'RPC 失败');
+  try{ data=await res.json(); }catch(e){ const err=new Error('Hub 返回非 JSON（HTTP '+res.status+'）'); err.status=res.status; throw err; }
+  if(!res.ok){ const err=new Error(data?.error?.message || ('HTTP '+res.status)); err.status=res.status; err.code=data?.error?.code; throw err; }
+  if(!data.ok){ const err=new Error(data?.error?.message || 'RPC 失败'); err.status=res.status; err.code=data?.error?.code; throw err; }
   return data.result;
 }
 function setHubState(ok){
@@ -384,13 +433,86 @@ async function health(){
     setHubState(true); $('#healthState').textContent='ok · '+data.service+' '+data.version; return true;
   }catch(e){ setHubState(false); $('#healthState').textContent=String(e.message||e); return false; }
 }
+function showAuth(mode='login'){
+  const gate=$('#authGate'); gate.classList.remove('hidden');
+  $('#loginPane').classList.toggle('hidden',mode!=='login');
+  $('#passwordPane').classList.toggle('hidden',mode!=='password');
+  if(mode==='login') setTimeout(()=>$('#loginPass').focus(),50);
+  else setTimeout(()=>$('#pwCurrent').focus(),50);
+}
+function hideAuth(){ $('#authGate').classList.add('hidden'); }
+async function checkAuth(){
+  const headers=state.token?{'Authorization':'Bearer '+state.token}:{};
+  const res=await fetch('/me',{headers});
+  let data; try{ data=await res.json(); }catch(e){ data={}; }
+  if(!res.ok){ showAuth('login'); return false; }
+  const result=data.result||{};
+  if(result.must_change_password){ showAuth('password'); return false; }
+  hideAuth(); return true;
+}
+async function login(){
+  $('#loginError').textContent='';
+  try{
+    const res=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:$('#loginUser').value.trim(),password:$('#loginPass').value})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){ $('#loginError').textContent=data?.error?.message||('HTTP '+res.status); return; }
+    $('#loginPass').value='';
+    if(data.result?.must_change_password){ showAuth('password'); return; }
+    hideAuth(); await refreshAll();
+  }catch(e){ $('#loginError').textContent=String(e.message||e); }
+}
+async function changePassword(){
+  $('#pwError').textContent='';
+  if($('#pwNew').value !== $('#pwConfirm').value){ $('#pwError').textContent='两次输入的新密码不一致'; return; }
+  try{
+    const res=await fetch('/password',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({current_password:$('#pwCurrent').value,new_password:$('#pwNew').value})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){ $('#pwError').textContent=data?.error?.message||('HTTP '+res.status); return; }
+    $('#pwCurrent').value=''; $('#pwNew').value=''; $('#pwConfirm').value='';
+    hideAuth(); await refreshAll();
+  }catch(e){ $('#pwError').textContent=String(e.message||e); }
+}
+async function logout(){
+  await fetch('/logout',{method:'POST'});
+  state.token=''; localStorage.removeItem('mb_token'); $('#setToken').value='';
+  state.ctx=null; showAuth('login');
+}
+async function loadTokens(){
+  try{
+    const res=await fetch('/tokens'); const data=await res.json();
+    if(!res.ok){ if(res.status===401) showAuth('login'); return; }
+    const items=data.result?.items||[];
+    $('#tokenList').innerHTML=items.length?items.map(t=>`<div class="item"><div class="row-meta"><span class="type">${esc(t.name)}</span><span class="hint">${esc(t.prefix)}… · 创建 ${esc((t.created_at||'').slice(0,10))}</span></div><div class="actions"><button class="outlined-btn" style="height:30px;padding:0 10px" data-token-revoke="${esc(t.id)}">撤销</button></div></div>`).join(''):'<div class="empty">还没有 API token</div>';
+  }catch(e){ snack(String(e.message),'err'); }
+}
+async function createToken(){
+  try{
+    const res=await fetch('/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#tokenName').value.trim()||'mcp'})});
+    const data=await res.json();
+    if(!res.ok){ if(res.status===401) showAuth('login'); else snack(data?.error?.message||'创建失败','err'); return; }
+    const token=data.result.token;
+    $('#tokenNew').textContent='API token（只显示一次，请复制到 MCP 配置）：\n'+token;
+    $('#tokenNew').classList.remove('hidden');
+    $('#mcpSnippet').textContent=mcpSnippet().replace('<API_TOKEN>',token);
+    await loadTokens();
+  }catch(e){ snack(String(e.message),'err'); }
+}
+async function revokeToken(id){
+  if(!confirm('撤销这个 API token？')) return;
+  await fetch('/tokens/'+encodeURIComponent(id),{method:'POST'});
+  await loadTokens();
+}
+
 function saveSettings(){
   state.token=$('#setToken').value.trim(); state.project=$('#setProject').value.trim();
   localStorage.setItem('mb_token',state.token); localStorage.setItem('mb_project',state.project);
 }
 function mcpSnippet(){
   const args=['serve','--remote',location.origin];
-  if(state.token) args.push('--token','<MEMBRIDGE_TOKEN>');
+  if(state.token) args.push('--token','<SERVICE_TOKEN>');
+  else args.push('--token','<API_TOKEN>');
   args.push('--project',state.project||'<PROJECT_PATH>');
   return JSON.stringify({mcpServers:{membridge:{command:'membridge',args}}}, null, 2);
 }
@@ -406,14 +528,17 @@ async function refreshStatus(){
   try{
     state.status=await rpc('status'); renderOverview(); renderIdentity();
   }catch(e){
-    if(String(e.message).includes('401')){ switchTab('settings'); snack('需要 Hub token：在连接页填写','err'); }
+    if(e.status===401 || e.code==='PASSWORD_CHANGE_REQUIRED'){ showAuth(e.code==='PASSWORD_CHANGE_REQUIRED'?'password':'login'); }
     else snack(String(e.message),'err');
   }
 }
 async function refreshAll(){
   try{
     await health(); await refreshStatus(); await bootstrap(); await loadTab(state.tab); snack('已连接');
-  }catch(e){ snack(String(e.message),'err'); }
+  }catch(e){
+    if(e.status===401 || e.code==='PASSWORD_CHANGE_REQUIRED'){ showAuth(e.code==='PASSWORD_CHANGE_REQUIRED'?'password':'login'); }
+    else snack(String(e.message),'err');
+  }
 }
 function switchTab(tab, updateHash=true){
   if(!titles[tab]) tab='overview';
@@ -491,7 +616,7 @@ async function loadTab(tab){
     if(tab==='skills') await loadSkills();
     if(tab==='identity') await refreshStatus();
     if(tab==='activity') await loadActivity();
-    if(tab==='settings'){ $('#setHub').value=location.origin; $('#mcpSnippet').textContent=mcpSnippet(); }
+    if(tab==='settings'){ $('#setHub').value=location.origin; $('#mcpSnippet').textContent=mcpSnippet(); await loadTokens(); }
   }catch(e){ snack(String(e.message),'err'); }
 }
 function openDialog(title, body){ const d=$('#dialog'); $('#dialogTitle').textContent=title; $('#dialogBody').textContent=body; if(!d.open) d.showModal(); }
@@ -520,6 +645,12 @@ $$('[data-tab]').forEach(btn=>{
 });
 $('#themeToggle').addEventListener('click',toggleTheme);
 $('#refreshBtn').addEventListener('click',refreshAll);
+$('#loginBtn').addEventListener('click',login);
+$('#loginPass').addEventListener('keydown',e=>{if(e.key==='Enter') login();});
+$('#pwBtn').addEventListener('click',changePassword);
+$('#logoutBtn').addEventListener('click',logout);
+$('#tokenCreate').addEventListener('click',createToken);
+$('#tokenList').addEventListener('click',e=>{const b=e.target.closest('[data-token-revoke]'); if(b) revokeToken(b.dataset.tokenRevoke);});
 $('#memSearch').addEventListener('click',()=>loadMemories().catch(e=>snack(String(e.message),'err')));
 $('#memQuery').addEventListener('keydown',e=>{if(e.key==='Enter') loadMemories().catch(err=>snack(String(err.message),'err'));});
 $('#memReload').addEventListener('click',()=>{$('#memQuery').value=''; loadMemories().catch(e=>snack(String(e.message),'err'));});
@@ -555,7 +686,7 @@ $('#mcpSnippet').textContent=mcpSnippet();
 const initialTab=location.hash.slice(1);
 if(titles[initialTab]) switchTab(initialTab,false);
 window.addEventListener('hashchange',()=>{const t=location.hash.slice(1); if(titles[t]) switchTab(t,false);});
-(async()=>{ const ok=await health(); if(!ok) return; await refreshAll(); })();
+(async()=>{ const ok=await health(); if(!ok) return; if(await checkAuth()) await refreshAll(); })();
 </script>
 </body>
 </html>

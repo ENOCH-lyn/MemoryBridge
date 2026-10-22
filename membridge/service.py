@@ -20,6 +20,7 @@ from .db import (
     new_id,
     utcnow,
 )
+from .auth import ensure_default_admin
 
 
 def _content_hash(text: str) -> str:
@@ -132,6 +133,7 @@ class AgentSyncService:
             self.skill_root = base.resolve().parent / "skills"
         self.conn = connect(db_path)
         init_db(self.conn)
+        ensure_default_admin(self.conn)
 
     def close(self) -> None:
         self.conn.close()

@@ -127,12 +127,24 @@ skill_.../scripts/smoke.ps1
 
 ## 7. 测试与 UI
 
-- `python -X utf8 -m unittest discover -s tests -v` → **29 tests OK**
+- `python -X utf8 -m unittest discover -s tests -v` → **31 tests OK**（含默认 admin 强制改密、会话、API token、静态 token 兼容）
 - Headless Edge 渲染 `http://127.0.0.1:8788/`、`/#memory`、`/#identity`：只读页面正常；记忆显示 project/global、topic、rationale、conditions；身份页显示 persona 中的口癖。
 - 截图：`doc/assets/webui.png`。
 - Hub `/health` 200；服务端不配置 LLM。
 
-## 8. 未完成
+## 8. 公网鉴权测试
+
+- 默认 `admin/admin` 登录 → 200，`must_change_password=true`。
+- 未改密直接 `/rpc` → **403 PASSWORD_CHANGE_REQUIRED**。
+- `POST /password` 改密后 → 200，新会话 Cookie；旧密码登录 → **401**。
+- `POST /tokens` 创建 API token → `/rpc` 用 Bearer token → **200**；token 只返回一次。
+- 静态 `MEMBRIDGE_TOKEN` 仍可作服务 token（兼容测试通过）。
+- 带 `X-Forwarded-Proto: https` 时，Cookie 带 `Secure`，并返回 HSTS。
+- 登录失败限速：同 IP 5 分钟 5 次失败后 429。
+- `compose.public.yaml`：只发布 Caddy 80/443，Hub 仅内部 `hub:8787`；`docker compose config` 通过。Docker 镜像构建仍受本机 Docker Hub 网络限制。
+- 公网 MCP 仍需 **一个入站 443 端口**；MCP 本地 proxy 是出站连接，不需要第二个端口。
+
+## 9. 未完成
 
 - Docker 镜像构建因本机 Docker Hub 网络不可达未验证。
 - 没有向量检索、op log/字段级冲突、TLS/账号体系。

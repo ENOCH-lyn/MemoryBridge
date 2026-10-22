@@ -145,11 +145,11 @@ flowchart LR
 | 文档 | Markdown + Git | SQLite 文档表 + 词法检索 |
 | 技能 | 候选→验证→晋升 | 文件夹包：SKILL.md + scripts/references；Hub 落盘，AI 通过 skill_install 维护 |
 | 抽取 | 服务端 LLM 抽取/去重/冲突 | 不内置 LLM；AI 客户端直接调用 memory_write；服务端只校验 |
-| 鉴权 | 账号/OIDC + 设备 token | 单一 Bearer token |
-| 部署 | Docker Compose | Dockerfile/compose 已提供；本机 Docker Hub 不可达，未完成构建验证 |
+| 鉴权 | 账号/OIDC + 设备 token | admin 账号 + 强制改密 + 会话 + 可撤销 API token |
+| 部署 | Docker Compose | Dockerfile/compose + 单端口 Caddy 公网配置；本机 Docker Hub 不可达，未完成构建验证 |
 | 控制台 | Web 管理/审核 | Material 3 单页只读 UI（概览/记忆/文档/技能/身份/活动/连接） |
 | 自动化 | 自动采集/同步 | AI 主动调用 `memory_write` / `doc_add` / `skill_install` / `identity_update`；无候选/批准；UI 只读 |
-| 评测 | CrossProjectBench + 消融 | 29 个功能测试，迁移实验未开始 |
+| 评测 | CrossProjectBench + 消融 | 31 个功能测试，迁移实验未开始 |
 
 ## 8. 待定项
 

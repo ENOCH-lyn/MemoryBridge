@@ -166,22 +166,26 @@ MCP 配置（设备 B）：
 - 项目 id 不再按绝对路径哈希：有 `origin` remote 时用 remote（如 `git:github.com/enoch-lyn/memorybridge`），否则用目录名；同一仓库在不同电脑上会落到同一个 project。
 - 当前是“中心数据库”，没有 op log/冲突副本；并发写同一记忆时仍是最后写入生效。下一阶段做增量同步与冲突队列。
 
-## 本地演示（无 token）
-
-想立刻看界面，可以直接用本地模式（只监听 127.0.0.1，不需要 token）：
+## 本地部署
 
 ```powershell
 python -m membridge --db .\data\membridge-local.db seed
 python -m membridge --db .\data\membridge-local.db hub --host 127.0.0.1 --port 8788
 ```
 
-浏览器打开 `http://127.0.0.1:8788/`。控制台默认项目是 `demo`；在「连接」里改成你自己的项目路径即可。数据库在 `data/membridge-local.db`，删除即可重置。
+浏览器打开 `http://127.0.0.1:8788/`。首次登录：
+
+```text
+admin / admin
+```
+
+首次登录会强制改密；改密后重新建立会话。控制台默认项目是 `demo`；在「连接」里改成你自己的项目路径即可。数据库在 `data/membridge-local.db`，删除即可重置。
 
 内容不是在这里录入的：agent 连上 MCP 后，在你说出持久要求时直接调用 `memory_write` / `doc_add` / `skill_install` / `identity_update`；UI 只读。
 
 ## Web 控制台
 
-Hub 启动后，浏览器打开：
+Hub 启动后，浏览器登录后打开：
 
 ```text
 http://HUB_IP:8787/
@@ -189,7 +193,7 @@ http://HUB_IP:8787/
 
 界面按 **Material 3** 设计：导航 rail、tonal surface、filled/tonal/outlined 按钮、明暗主题切换；单文件 HTML/CSS/JS，无 Node 构建、无外部 CDN。
 
-在「连接」页填 Hub 的 `MEMBRIDGE_TOKEN`（本地无 token 模式可留空），保存后即可查看：
+登录后即可查看；MCP 使用「连接」页创建的 **API token**：
 
 ![MemoryBridge Web 控制台](doc/assets/webui.png)
 
@@ -215,6 +219,52 @@ docker compose up -d --build
 ```bash
 docker compose exec hub membridge --db /data/membridge.db seed
 ```
+
+## 公网部署（单个 HTTPS 端口）
+
+**MCP 不需要额外开放端口**：MCP 是本地 stdio 进程，`membridge serve --remote` 作为客户端主动连 Hub。公网只需要开放 **443**（80 仅用于 ACME 证书/跳转），不要暴露 8787。
+
+```bash
+cp .env.public.example .env
+# 改 DOMAIN=memory.example.com，并把域名 A/AAAA 指向服务器
+docker compose -f compose.public.yaml up -d --build
+```
+
+`compose.public.yaml` 只发布 Caddy 的 80/443；Hub 只在内部网络 `hub:8787`。Caddy 自动申请证书、HSTS、安全头；`MEMBRIDGE_COOKIE_SECURE=1` 确保会话 Cookie 带 `Secure`。
+
+首次登录仍是 `admin / admin`，**必须立即改密**；然后：
+
+![MemoryBridge 登录](doc/assets/login.png)
+
+1. 设置新密码（≥8 位，不能与旧密码相同）；
+2. 「连接」页创建 **API token**（只显示一次）；
+3. MCP 配置使用 token：
+
+```json
+{
+  "mcpServers": {
+    "membridge": {
+      "command": "membridge",
+      "args": [
+        "serve", "--remote", "https://memory.example.com",
+        "--token", "mb_xxx",
+        "--project", "C:\\path\\to\\project"
+      ]
+    }
+  }
+}
+```
+
+安全措施：
+
+- 密码：PBKDF2-HMAC-SHA256（260k 次）+ 随机 salt；默认 admin 首次登录强制改密。
+- 会话：HttpOnly + SameSite=Lax + 7 天过期；HTTPS 下加 Secure；改密后使旧会话失效。
+- MCP：API token 只存 SHA-256 hash，明文只在创建时显示一次；可撤销。
+- 登录限速：同一 IP 5 分钟内最多 5 次失败。
+- 静态 `MEMBRIDGE_TOKEN` 仍可选，公网建议不用，改用 API token。
+- 单端口、单点 SQLite；公网多实例/高并发仍需 op log/TLS 账号体系升级。
+
+> 注意：当前 MCP 走本地 stdio proxy，不是原生 MCP streamable HTTP；因此不需要第二个入站端口。若未来直接暴露 HTTP MCP，应在同一 Caddy 端口下增加 `/mcp` 路由和独立鉴权。
 
 ## CLI
 
@@ -302,7 +352,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 29 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入。
+当前 31 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入、默认 admin 强制改密/会话/API token/静态 token 兼容。
 
 ## 文档
 
