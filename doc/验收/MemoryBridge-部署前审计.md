@@ -1,7 +1,7 @@
 # MemoryBridge 部署前审计
 
 日期：2026-10-22  
-审计对象：`main` @ `bfd3fba`（另含本轮未提交审计修复）  
+审计对象：`main` @ `fdf9de4`  
 范围：安全、功能、易用性、UI、部署与运维  
 环境：Windows 本地 Hub；隔离 DB + Playwright；Docker Hub 不可达
 
