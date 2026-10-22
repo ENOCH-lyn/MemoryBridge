@@ -1279,7 +1279,9 @@ class AgentSyncService:
         status: str | None = None,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
-        target = project_id if project_id is not None else session["project_id"]
+        # Skills are portable capabilities: global by default. Pass project_id
+        # explicitly for a skill that only makes sense inside one repository.
+        target = project_id if project_id is not None else None
         if target == "global":
             target = None
         lowered = {key.lower(): key for key in files}

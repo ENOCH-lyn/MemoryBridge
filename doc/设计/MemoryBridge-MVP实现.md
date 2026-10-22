@@ -122,7 +122,7 @@ memory_write(ctx, content, topic, type, scope="project",
 | 项目决策/教训/约定 | `memory_write(scope=project, rationale, conditions)` | 当前 project bootstrap 自动注入 + search |
 | 完整设计/ADR/规范/长笔记 | `doc_add(path, content)` | 不自动注入；`doc_search` 返回 snippet，再 `doc_read` |
 | 长文档的核心结论必须每次记得 | doc + 一条短 memory 指针 | memory 自动；全文按需读 |
-| 可执行流程/脚本/模板 | `skill_install` 文件夹 | `skill_list` / `skill_get` / `skill_file` |
+| 可执行流程/脚本/模板 | `skill_install` 文件夹（默认全局） | `skill_list` / `skill_get` / `skill_file` |
 
 判断口诀：**“每次都要自动知道”放 memory；“需要读全文”放 doc；“需要执行”放 skill。** 文档全文不要塞进 memory；memory 只保留短结论和文档 id/path。
 

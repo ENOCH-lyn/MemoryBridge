@@ -43,6 +43,7 @@ class SkillFolderTest(unittest.TestCase):
         )
         self.assertEqual(result["file_count"], 3)
         self.assertEqual(result["status"], "validated")
+        self.assertIsNone(result["project_id"])
         loaded = self.svc.skill_get(self.ctx, result["skill_id"])
         self.assertEqual(loaded["name"], "Release checklist")
         self.assertEqual(len(loaded["files"]), 3)

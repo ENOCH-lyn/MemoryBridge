@@ -12,7 +12,7 @@
 - **项目隔离**：按 `.membridge-project.json` / git remote / 目录名建稳定 project；默认检索“当前项目 + 全局”，`scope=all` 才跨项目。
 - **AI 直接写记忆**：`memory_write` 立即 upsert 为 active，不需要候选/批准；每条必须有稳定 `topic`，决策/教训必须有 `rationale` 和 `conditions`，避免把项目结论写成无场景的全局规则。
 - **AI 直接写身份**：`identity_update` 修改 persona、称呼、边界；语气、口癖、句尾都写在 persona 文本里，没有单独的 `sentence_end` 字段。
-- **AI 直接写文档 / 技能**：`doc_add` 写 Markdown；`skill_install` 安装文件夹技能（`SKILL.md` + scripts/references/assets）。
+- **AI 直接写文档 / 技能**：`doc_add` 写 Markdown；`skill_install` 安装文件夹技能（`SKILL.md` + scripts/references/assets）；技能默认全局。
 - **Web 控制台（可编辑）**：概览、记忆、文档、技能、身份、活动（audit log）、连接；支持新建/编辑/删除、文件夹上传、技能文件树 + CodeMirror 编辑。
 - **可审计**：所有写入落 `audit_log`，UI「活动」和 `audit_list` 可回看。
 - **跨设备**：一台设备/服务器跑 `hub`，其他设备用 `serve --remote` 做本地 MCP proxy；连的是同一份身份与记忆。
@@ -120,14 +120,14 @@ MemoryBridge 提供三层提示：
 | 每次回答都要自动知道的短事实/偏好 | **Memory** | “称呼主人”“UI 喜欢浅色紧凑”“提交信息用中文” |
 | 项目决策/教训/约定，短、要带条件 | **Memory** | “demo 用 SQLite；只适合单用户低并发” |
 | 完整设计、ADR、规范、会议记录、长笔记 | **Document** | 完整原因、备选方案、接口、截图 |
-| 可执行流程/脚本/模板/参考资料 | **Skill 文件夹** | `SKILL.md` + `scripts/` + `references/` |
+| 可执行流程/脚本/模板/参考资料 | **Skill 文件夹（默认全局）** | `SKILL.md` + `scripts/` + `references/` |
 | 长文档里的核心结论，又必须每次记得 | **Document + 短 Memory 指针** | memory: “部署见 docs/deploy.md，先改密再开公网” |
 
 规则：
 
 - **Memory 是“AI 应该随时记得并应用的短句”**，建议 1–3 句；超过这个量级就写文档，memory 只留结论 + 文档路径/id。
 - **Document 是“需要读全文的知识工件”**，不自动注入；AI 先 `doc_search` 拿 snippet，再 `doc_read` 全文。
-- **Skill 是“可执行能力”**，不是记忆；不要把带脚本的流程塞进 memory。
+- **Skill 是“可执行能力”**，不是记忆；默认安装为全局，所有项目可见；只有确实绑定某个仓库的脚本才显式传 `project_id`。
 - 不要把文档全文复制成一条 memory；也不要指望 AI 自动读一篇没被搜索的文档。
 - Memory 有 `topic/scope/rationale/conditions/pinned/version`；文档有 `path/project_id/updated_at`，没有自动注入。
 - 当前这是**建议规则和工具语义**，不是数据库级硬约束：`memory_write` 和 `doc_add` 都接受文本，最终仍靠 agent 判断。

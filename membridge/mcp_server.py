@@ -309,7 +309,8 @@ TOOLS: list[dict[str, Any]] = [
         "title": "Install skill folder",
         "description": (
             "Install a folder-shaped skill package: a map of relative path -> text content, "
-            "which MUST include SKILL.md (YAML frontmatter + body). Files are stored under the skill directory. "
+            "which MUST include SKILL.md (YAML frontmatter + body). Skills are global by default; "
+            "pass project_id for a repository-specific skill. Files are stored under the skill directory. "
             "Requires bootstrap."
         ),
         "inputSchema": _schema(
