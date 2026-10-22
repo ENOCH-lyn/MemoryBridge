@@ -359,8 +359,10 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
             <p class="section-sub">登录后使用同源会话；静态 Bearer token 仅作兼容，MCP 请用下方 API token。</p>
             <div class="form">
               <div class="field"><label for="setHub">Hub URL</label><input id="setHub" readonly></div>
-              <div class="field"><label for="setToken">静态服务 token（可选）</label><input id="setToken" type="password" placeholder="兼容 MEMBRIDGE_TOKEN，可留空"></div>
-              <div class="field"><label for="setProject">项目路径（可留空）</label><input id="setProject" placeholder="填你的项目路径；留空只显示全局"></div>
+              <div class="field"><label for="setProject">网页当前项目（可留空）</label><input id="setProject" placeholder="只影响这个网页；留空=只显示全局"></div>
+              <p class="hint">这里只决定网页的 bootstrap 项目，不会改 MCP 客户端的 --project。公网 Hub 读不到你电脑上的路径，填一个双方约定的稳定标识即可。</p>
+              <div class="field"><label for="setToken">旧版全局 token（一般留空）</label><input id="setToken" type="password" placeholder="仅当 Hub 设置了 MEMBRIDGE_TOKEN 时才用"></div>
+              <p class="hint">这不是 API token。MCP 请用下方「API token / MCP 鉴权」创建的 mb_ 开头 token；当前公网 Hub 没有设置静态 MEMBRIDGE_TOKEN。</p>
               <div class="inline"><button class="filled-btn" id="setSave">保存并重连</button><button class="text-btn" id="setClear">清除 token</button></div>
               <p class="hint" id="setState"></p>
             </div>
