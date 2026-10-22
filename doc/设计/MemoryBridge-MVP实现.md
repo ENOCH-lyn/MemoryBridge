@@ -114,18 +114,30 @@ memory_write(ctx, content, topic, type, scope="project",
 - `memory_ingest` / 服务端 LLM 抽取已移除；AI 客户端自己判断何时调用 `memory_write`。
 - **技能是文件夹**：`SKILL.md`（YAML frontmatter + 正文）+ `scripts/`、`references/`、`assets/`。Hub 落盘到 `data/skills/<skill_id>/`，DB 只存元数据与文件清单；`skill_install` / `skill_save_file` / `skill_delete` 读写整个包，UI 提供目录树 + CodeMirror 编辑。
 
+## 4.2 记忆、文档、技能的边界
+
+| 场景 | 写入 | 读取时机 |
+|---|---|---|
+| 用户级偏好、称呼、UI/输出风格 | `memory_write(scope=global, pinned=true)` | 每次 bootstrap 自动注入，最多默认 20 条 |
+| 项目决策/教训/约定 | `memory_write(scope=project, rationale, conditions)` | 当前 project bootstrap 自动注入 + search |
+| 完整设计/ADR/规范/长笔记 | `doc_add(path, content)` | 不自动注入；`doc_search` 返回 snippet，再 `doc_read` |
+| 长文档的核心结论必须每次记得 | doc + 一条短 memory 指针 | memory 自动；全文按需读 |
+| 可执行流程/脚本/模板 | `skill_install` 文件夹 | `skill_list` / `skill_get` / `skill_file` |
+
+判断口诀：**“每次都要自动知道”放 memory；“需要读全文”放 doc；“需要执行”放 skill。** 文档全文不要塞进 memory；memory 只保留短结论和文档 id/path。
+
 ## 5. 检索
 
 - 中文：双字 bigram；英文：单词；去重后逐个 `in` 文本。
 - 只检索 `status='active'`；候选/拒绝/删除不可见（legacy bulk ingest 的中间态不进入 UI）。
 - 评分：`0.55*覆盖率 + 0.15*精确匹配 + 0.10*置信度 + 0.10*时间衰减 + 0.10*类型先验`。
-- 输出：content、score、snippet、`[mem:id]`、episode_id/evidence；文档同理。
+- 输出：`memory_search` 返回完整短记忆 + 100 字 snippet；`doc_search` 只返回 100 字 snippet + document_id，全文用 `doc_read`；`doc_list` 返回 160 字预览。
 - 这是**词法检索**，不是 embedding；下一阶段接 bge-m3/pgvector。
 
 ## 6. MCP 协议
 
 - `initialize` 返回 `protocolVersion`、`capabilities`、`serverInfo`、`instructions`。
-- `instructions` 明确要求每次新会话先 `agent_bootstrap`，并在任务结束时用 `memory_ingest` 写入持久结论。
+- `instructions` 明确要求每次新会话先 `agent_bootstrap`，持久结论用 `memory_write`，文档/技能用 `doc_add` / `skill_install` / `skill_save_file`。
 - 工具描述也重复该要求；其他工具要求 `context_version`。
 - `tools/call` 的 Gate 错误返回 `isError: true` + `structuredContent.code`。
 - 资源 `memory://identity`；prompt `recall_for_task`。

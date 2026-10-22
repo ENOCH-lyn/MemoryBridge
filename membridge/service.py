@@ -543,6 +543,12 @@ class AgentSyncService:
                     "skill": "skill_install / skill_save_file; skill_delete only on explicit delete request",
                     "identity": "identity_update",
                 },
+                "routing": {
+                    "memory": "compact always-on facts, preferences, decisions and lessons (1-3 sentences)",
+                    "document": "long-form design/spec/ADR/notes; not auto-injected; use doc_search then doc_read",
+                    "skill": "executable folder with SKILL.md and scripts/references",
+                    "memory_pointer": "for a long document whose conclusion must always be known",
+                },
                 "before_final_answer": "Scan for the triggers above; perform the write, then answer.",
                 "approval": "none",
                 "note": "You and the web console can both write. The server cannot force a model to call a tool; this contract is also returned by bootstrap so the client can enforce its own system prompt.",

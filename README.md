@@ -113,6 +113,25 @@ MemoryBridge 提供三层提示：
 
 这段可以放进项目的 `AGENTS.md` / `CLAUDE.md` / Codex 项目指令。
 
+## 记忆、文档、技能怎么选
+
+| 场景 | 放哪 | 例子 |
+|---|---|---|
+| 每次回答都要自动知道的短事实/偏好 | **Memory** | “称呼主人”“UI 喜欢浅色紧凑”“提交信息用中文” |
+| 项目决策/教训/约定，短、要带条件 | **Memory** | “demo 用 SQLite；只适合单用户低并发” |
+| 完整设计、ADR、规范、会议记录、长笔记 | **Document** | 完整原因、备选方案、接口、截图 |
+| 可执行流程/脚本/模板/参考资料 | **Skill 文件夹** | `SKILL.md` + `scripts/` + `references/` |
+| 长文档里的核心结论，又必须每次记得 | **Document + 短 Memory 指针** | memory: “部署见 docs/deploy.md，先改密再开公网” |
+
+规则：
+
+- **Memory 是“AI 应该随时记得并应用的短句”**，建议 1–3 句；超过这个量级就写文档，memory 只留结论 + 文档路径/id。
+- **Document 是“需要读全文的知识工件”**，不自动注入；AI 先 `doc_search` 拿 snippet，再 `doc_read` 全文。
+- **Skill 是“可执行能力”**，不是记忆；不要把带脚本的流程塞进 memory。
+- 不要把文档全文复制成一条 memory；也不要指望 AI 自动读一篇没被搜索的文档。
+- Memory 有 `topic/scope/rationale/conditions/pinned/version`；文档有 `path/project_id/updated_at`，没有自动注入。
+- 当前这是**建议规则和工具语义**，不是数据库级硬约束：`memory_write` 和 `doc_add` 都接受文本，最终仍靠 agent 判断。
+
 ## 项目、全局与“猫娘聊天记忆”
 
 **项目不是 AI 猜的**：MCP proxy 的 `--project` 或 `agent_bootstrap(project_path=...)` 传入项目根目录，服务端生成稳定 key：
