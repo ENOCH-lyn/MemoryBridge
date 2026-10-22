@@ -7,6 +7,7 @@ services:
       - "8787:8787"
     environment:
       MEMBRIDGE_TOKEN: ${MEMBRIDGE_TOKEN:-}
+      MEMBRIDGE_ADMIN_PASSWORD: ${MEMBRIDGE_ADMIN_PASSWORD:-}
       MEMBRIDGE_DB: /data/membridge.db
     volumes:
       - membridge-data:/data

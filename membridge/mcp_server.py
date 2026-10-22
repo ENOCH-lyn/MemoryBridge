@@ -342,6 +342,16 @@ TOOLS: list[dict[str, Any]] = [
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },
     {
+        "name": "skill_delete_file",
+        "title": "Delete skill file",
+        "description": "Delete one file from a skill folder (SKILL.md is protected). Requires bootstrap.",
+        "inputSchema": _schema(
+            {"context_version": CTX, "skill_id": {"type": "string"}, "path": {"type": "string"}},
+            ["context_version", "skill_id", "path"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True},
+    },
+    {
         "name": "skill_delete",
         "title": "Delete skill",
         "description": "Delete a skill folder and its DB row. Requires bootstrap.",
@@ -536,6 +546,8 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
         return _ok(service.skill_file(ctx, args["skill_id"], args["path"]))
     if name == "skill_save_file":
         return _ok(service.skill_save_file(ctx, args["skill_id"], args["path"], args["content"]))
+    if name == "skill_delete_file":
+        return _ok(service.skill_delete_file(ctx, args["skill_id"], args["path"]))
     if name == "skill_delete":
         return _ok(service.skill_delete(ctx, args["skill_id"]))
     if name == "project_list":

@@ -235,7 +235,7 @@ docker compose -f compose.public.yaml up -d --build
 
 `compose.public.yaml` 只发布 Caddy 的 80/443；Hub 只在内部网络 `hub:8787`。Caddy 自动申请证书、HSTS、安全头；`MEMBRIDGE_COOKIE_SECURE=1` 确保会话 Cookie 带 `Secure`。
 
-首次登录仍是 `admin / admin`，**必须立即改密**；然后：
+首次登录仍是 `admin / admin`，**必须立即改密**；也可以在 `.env` 设置 `MEMBRIDGE_ADMIN_PASSWORD` 作为首次启动的强初始密码（仍会强制改密）。然后：
 
 ![MemoryBridge 登录](doc/assets/login.png)
 
@@ -265,6 +265,7 @@ docker compose -f compose.public.yaml up -d --build
 - MCP：API token 只存 SHA-256 hash，明文只在创建时显示一次；可撤销。
 - 登录限速：同一 IP 5 分钟内最多 5 次失败。
 - 忘记密码：停 Hub 后用 `membridge --db ... user set-password --username admin` 重置（交互输入，不进 shell 历史）。
+- 备份：停 Hub 后复制 `data/membridge.db` 和 `data/skills/`；或登录后下载 `/export` JSON（包含技能文件）。SQLite 运行中直接拷贝可能不一致。
 - 静态 `MEMBRIDGE_TOKEN` 仍可选，公网建议不用，改用 API token。
 - 单端口、单点 SQLite；公网多实例/高并发仍需 op log/TLS 账号体系升级。
 

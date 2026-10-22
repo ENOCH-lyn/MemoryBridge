@@ -116,6 +116,9 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(len(skill["steps"]), 2)
         self.svc.skill_save_file(ctx, skill["id"], "SKILL.md", skill["skill_md"] + "\n- edited\n")
         self.assertIn("edited", self.svc.skill_get(ctx, skill["id"])["skill_md"])
+        self.svc.skill_save_file(ctx, skill["id"], "references/new.md", "new file")
+        self.svc.skill_delete_file(ctx, skill["id"], "references/new.md")
+        self.assertNotIn("references/new.md", [f["path"] for f in self.svc.skill_get(ctx, skill["id"])["files"]])
         self.svc.skill_delete(ctx, skill["id"])
         self.assertEqual(self.svc.skill_list(ctx)["count"], 0)
 

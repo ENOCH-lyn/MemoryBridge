@@ -1451,6 +1451,36 @@ class AgentSyncService:
             shutil.rmtree(target)
         return {"skill_id": skill_id, "deleted": True}
 
+    def skill_delete_file(self, context_version: str, skill_id: str, path: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown skill: {skill_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("skill is outside the current project scope")
+        safe = self._safe_skill_path(path)
+        if safe == "SKILL.md":
+            raise ValueError("SKILL.md cannot be deleted; edit it instead")
+        target = self._skill_dir(skill_id) / safe
+        if not target.exists() or not target.is_file():
+            raise ValueError(f"skill file not found: {safe}")
+        target.unlink()
+        files: dict[str, str] = {}
+        for item in self._skill_files(skill_id):
+            file_path = self._skill_dir(skill_id) / item["path"]
+            try:
+                files[item["path"]] = file_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+        self.skill_install(
+            context_version,
+            files=files,
+            name=row["name"],
+            project_id=row["project_id"],
+            status=row["status"],
+        )
+        return {"skill_id": skill_id, "path": safe, "deleted": True}
+
     # ------------------------------------------------------------------
     # project context / status / export
     # ------------------------------------------------------------------

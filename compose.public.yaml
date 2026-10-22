@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       MEMBRIDGE_DB: /data/membridge.db
+      MEMBRIDGE_ADMIN_PASSWORD: ${MEMBRIDGE_ADMIN_PASSWORD:-}
       MEMBRIDGE_COOKIE_SECURE: "1"
       MEMBRIDGE_TRUST_PROXY: "1"
     volumes:

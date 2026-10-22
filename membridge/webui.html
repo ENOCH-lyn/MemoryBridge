@@ -173,6 +173,10 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 .skill-editor{display:flex;flex-direction:column;min-width:0;min-height:0}
 .skill-editor .CodeMirror{height:calc(68vh - 110px);min-height:260px;font-size:13px;border-radius:var(--radius-s);border:1px solid var(--md-outline-variant)}
 .skill-path{font-family:var(--mono);font-size:12px;color:var(--md-on-surface-variant);margin-bottom:6px}
+[data-theme="dark"] .CodeMirror{background:var(--md-surface-container-highest);color:var(--md-on-surface)}
+[data-theme="dark"] .CodeMirror-gutters{background:var(--md-surface-container-high);border-color:var(--md-outline-variant);color:var(--md-on-surface-variant)}
+[data-theme="dark"] .CodeMirror-cursor{border-left-color:var(--md-on-surface)}
+[data-theme="dark"] .CodeMirror-selected{background:rgba(255,255,255,.16)}
 .snackbar{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);opacity:0;pointer-events:none;
   background:var(--md-inverse-surface);color:var(--md-inverse-on-surface);border-radius:8px;padding:12px 18px;
   font-size:13px;z-index:60;box-shadow:0 2px 8px var(--md-shadow);transition:.18s;max-width:min(560px,90vw)}
@@ -212,7 +216,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
     <div class="auth-brand"><div class="logo">M</div><div><b>忆桥</b><div class="hint" style="margin:0">MEMORYBRIDGE</div></div></div>
     <div id="loginPane">
       <h2>登录</h2>
-      <p class="hint">默认账号 <b>admin</b>，默认密码 <b>admin</b>；首次登录必须改密。</p>
+      <p class="hint">首次部署使用初始化账号；登录后请立即修改密码。</p>
       <div class="form">
         <div class="field"><label for="loginUser">用户名</label><input id="loginUser" autocomplete="username" value="admin"></div>
         <div class="field"><label for="loginPass">密码</label><input id="loginPass" type="password" autocomplete="current-password"></div>
@@ -314,7 +318,7 @@ dialog::backdrop{background:rgba(0,0,0,.42)}
 
       <section class="tab" id="tab-docs">
         <div class="card">
-          <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">文档</h2></div><div class="inline"><button class="filled-btn" data-action="new-doc">新建文档</button><button class="text-btn" id="docReload">刷新</button></div></div>
+          <div class="inline" style="justify-content:space-between"><div><h2 class="section-title">文档</h2></div><div class="inline"><button class="filled-btn" data-action="new-doc">新建文档</button><button class="tonal-btn" data-action="upload-doc">上传 Markdown</button><button class="text-btn" id="docReload">刷新</button><input type="file" id="docUpload" accept=".md,.markdown,.txt" hidden></div></div>
           <div class="list" id="docList" style="margin-top:16px"><div class="empty">加载中…</div></div>
         </div>
       </section>
@@ -742,7 +746,7 @@ async function openSkill(id){
   openEditorDialog(s.name||'Skill',`<div class="skill-layout">
     <div class="skill-tree" id="skillTree">${skillTreeHTML(files,'SKILL.md')}</div>
     <div class="skill-editor"><div class="skill-path" id="skillPath">SKILL.md</div><textarea id="skillText"></textarea>
-      <div class="inline" style="margin-top:8px"><button class="filled-btn" id="skSave">保存文件</button><button class="text-btn" id="skDelete">删除技能</button><span class="hint" id="skState"></span></div></div>
+      <div class="inline" style="margin-top:8px"><button class="filled-btn" id="skSave">保存文件</button><button class="text-btn" id="skNew">新建文件</button><button class="text-btn" id="skDelFile">删除文件</button><button class="text-btn" id="skDelete">删除技能</button><span class="hint" id="skState"></span></div></div>
   </div>`);
   let currentPath='SKILL.md';
   if(!files.some(f=>f.path==='SKILL.md') && files.length) currentPath=files[0].path;
@@ -759,6 +763,22 @@ async function openSkill(id){
     try{
       await rpc('skill_save_file',[state.ctx,id,currentPath],{content:cm.getValue()});
       $('#skState').textContent='已保存'; await loadSkills(); snack('文件已保存');
+    }catch(e){ $('#skState').textContent=String(e.message); }
+  };
+  $('#skNew').onclick=async()=>{
+    const path=prompt('新文件路径（例如 references/notes.md）','references/notes.md');
+    if(!path) return;
+    try{
+      await rpc('skill_save_file',[state.ctx,id,path],{content:''});
+      await openSkill(id); await loadSkills();
+    }catch(e){ $('#skState').textContent=String(e.message); }
+  };
+  $('#skDelFile').onclick=async()=>{
+    if(currentPath==='SKILL.md'){ $('#skState').textContent='SKILL.md 不能删除'; return; }
+    if(!confirm('删除当前文件？')) return;
+    try{
+      await rpc('skill_delete_file',[state.ctx,id,currentPath]);
+      await openSkill(id); await loadSkills();
     }catch(e){ $('#skState').textContent=String(e.message); }
   };
   $('#skDelete').onclick=async()=>{
@@ -850,6 +870,15 @@ $('#tokenList').addEventListener('click',e=>{const b=e.target.closest('[data-tok
 $('#idSave').addEventListener('click',saveIdentity);
 $('#secSave').addEventListener('click',saveSecurity);
 $('#skillFolder').addEventListener('change',e=>uploadSkillFolder(e.target.files));
+$('#docUpload').addEventListener('change',async e=>{
+  const file=e.target.files&&e.target.files[0]; if(!file) return;
+  try{
+    const content=await file.text();
+    await rpc('doc_add',[state.ctx],{path:'docs/'+file.name,title:file.name.replace(/\.[^.]+$/,''),content});
+    await loadDocs(); snack('文档已上传');
+  }catch(err){ snack(String(err.message),'err'); }
+  finally{ e.target.value=''; }
+});
 $('#memSearch').addEventListener('click',()=>loadMemories().catch(e=>snack(String(e.message),'err')));
 $('#memQuery').addEventListener('keydown',e=>{if(e.key==='Enter') loadMemories().catch(err=>snack(String(err.message),'err'));});
 $('#memReload').addEventListener('click',()=>{$('#memQuery').value=''; loadMemories().catch(e=>snack(String(e.message),'err'));});
@@ -867,6 +896,7 @@ $('#exportBtn').addEventListener('click',async()=>{
   }catch(e){ snack(String(e.message),'err'); }
 });
 $('#dialogClose').addEventListener('click',closeDialog);
+$('#dialog').addEventListener('close',()=>{ if(cm){ cm.toTextArea(); cm=null; } });
 $('#dialog').addEventListener('click',e=>{ if(e.target===$('#dialog')) closeDialog(); });
 document.addEventListener('click',async e=>{
   const btn=e.target.closest('button[data-action]'); if(!btn) return;
@@ -879,6 +909,7 @@ document.addEventListener('click',async e=>{
       await rpc('memory_delete',[state.ctx,id]); await refreshAll(); snack('记忆已删除');
     }
     if(action==='new-doc'){ await openDocForm(null); }
+    if(action==='upload-doc'){ $('#docUpload').click(); }
     if(action==='edit-doc'){ await openDocForm(id); }
     if(action==='delete-doc'){ if(!confirm('删除这个文档？')) return; await rpc('doc_delete',[state.ctx,id]); await loadDocs(); snack('文档已删除'); }
     if(action==='read-doc'){ const doc=await rpc('doc_read',[state.ctx,id]); openDialog(doc.title||doc.path,doc.content||''); }

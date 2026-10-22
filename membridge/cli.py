@@ -362,7 +362,8 @@ def build_parser() -> argparse.ArgumentParser:
     user_set = p_sub.add_parser("set-password")
     user_set.add_argument("--username", default="admin")
     user_set.add_argument("--password", default=None, help="omit to prompt securely")
-    user_set.add_argument("--must-change", action="store_true", help="force change at next login")
+    user_set.add_argument("--must-change", dest="must_change", action="store_true", default=True, help="force change at next login (default)")
+    user_set.add_argument("--no-must-change", dest="must_change", action="store_false", help="do not force a change")
     user_set.set_defaults(func=cmd_user, user_command="set-password")
 
     p = sub.add_parser("persona", help="show or set the identity/persona")

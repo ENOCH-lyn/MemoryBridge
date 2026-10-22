@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import os
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -52,10 +53,11 @@ def ensure_default_admin(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()
     if int(row["n"]) == 0:
         now = utcnow()
+        initial = os.environ.get("MEMBRIDGE_ADMIN_PASSWORD") or "admin"
         conn.execute(
             "INSERT INTO users(id, username, password_hash, role, must_change_password, created_at, updated_at) "
             "VALUES (?, 'admin', ?, 'admin', 1, ?, ?)",
-            (new_id("usr"), hash_password("admin"), now, now),
+            (new_id("usr"), hash_password(initial), now, now),
         )
         conn.commit()
 

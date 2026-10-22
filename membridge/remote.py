@@ -75,6 +75,7 @@ ALLOWED_METHODS = {
     "skill_install",
     "skill_file",
     "skill_save_file",
+    "skill_delete_file",
     "skill_delete",
     "skill_list",
     "skill_get",
@@ -173,14 +174,27 @@ class HubHandler(BaseHTTPRequestHandler):
         return f"{COOKIE_NAME}=; {flags}"
 
     def _client_ip(self) -> str:
-        forwarded = self.headers.get("X-Forwarded-For", "")
-        if forwarded and os.environ.get("MEMBRIDGE_TRUST_PROXY", "").lower() in {"1", "true", "yes"}:
-            return forwarded.split(",")[0].strip()
+        if os.environ.get("MEMBRIDGE_TRUST_PROXY", "").lower() in {"1", "true", "yes"}:
+            real = self.headers.get("X-Real-IP", "").strip()
+            if real:
+                return real
+            forwarded = self.headers.get("X-Forwarded-For", "")
+            if forwarded:
+                # The nearest proxy appends the observed client last; prefer that
+                # over a client-supplied first value.
+                return forwarded.split(",")[-1].strip()
         return self.client_address[0]
 
     def _rate_limited(self) -> bool:
         now = time.time()
         with self._failure_lock:
+            if len(self._failures) > 4096:
+                for key in list(self._failures):
+                    self._failures[key] = [stamp for stamp in self._failures[key] if now - stamp < LOGIN_WINDOW]
+                    if not self._failures[key]:
+                        self._failures.pop(key, None)
+                while len(self._failures) > 4096:
+                    self._failures.pop(next(iter(self._failures)), None)
             values = [stamp for stamp in self._failures.get(self._client_ip(), []) if now - stamp < LOGIN_WINDOW]
             self._failures[self._client_ip()] = values
             return len(values) >= LOGIN_LIMIT
