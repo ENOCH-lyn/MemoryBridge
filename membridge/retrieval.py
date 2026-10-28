@@ -298,10 +298,18 @@ class Model2VecEmbedder:
 
     provider = "model2vec"
 
-    def __init__(self, model_name: str = "minishlab/potion-multilingual-128M") -> None:
+    def __init__(
+        self,
+        model_name: str = "minishlab/potion-multilingual-128M",
+        *,
+        quantize_to: str | None = None,
+    ) -> None:
         from model2vec import StaticModel  # type: ignore import-not-found
 
-        self._model = StaticModel.from_pretrained(model_name)
+        kwargs: dict[str, Any] = {}
+        if quantize_to:
+            kwargs["quantize_to"] = quantize_to
+        self._model = StaticModel.from_pretrained(model_name, **kwargs)
         self.model = f"model2vec:{model_name}"
         self.dim = int(self._model.dim)
 
@@ -342,7 +350,10 @@ def get_embedder() -> Any:
     local_model = bool(model) and Path(model).expanduser().exists()
     if provider == "model2vec" or (provider == "auto" and local_model):
         try:
-            _EMBEDDER = Model2VecEmbedder(model or "minishlab/potion-multilingual-128M")
+            _EMBEDDER = Model2VecEmbedder(
+                model or "minishlab/potion-multilingual-128M",
+                quantize_to=(os.environ.get("MEMBRIDGE_EMBED_DTYPE") or None),
+            )
             return _EMBEDDER
         except Exception:  # noqa: BLE001 - fall back to hashing when unavailable
             if provider == "model2vec":
