@@ -6,6 +6,7 @@ import hashlib
 import math
 import os
 import re
+import sqlite3
 import configparser
 import shutil
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ from .db import (
     utcnow,
 )
 from .auth import ensure_default_admin
+from . import retrieval as R
 
 
 def _content_hash(text: str) -> str:
@@ -165,6 +167,86 @@ class AgentSyncService:
 
     def get_agent_id(self) -> str:
         return self._meta("agent_id", "agent_default") or "agent_default"
+
+    # ------------------------------------------------------------------
+    # retrieval index (vectors + BM25 + forgetting)
+    # ------------------------------------------------------------------
+    @property
+    def embedder(self) -> Any:
+        return R.get_embedder()
+
+    def _memory_text(self, row: Any) -> str:
+        parts = [row["content"] or "", row["topic"] or ""]
+        if "conditions" in row.keys() and row["conditions"]:
+            parts.append(row["conditions"])
+        return "\n".join(part for part in parts if part)
+
+    def _index_memory(self, memory_id: str, *, row: Any | None = None) -> None:
+        """Keep the vector + FTS indexes in sync with one memory row."""
+        row = row or self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if row is None or row["status"] != "active":
+            R.delete_vector(self.conn, "memory", memory_id)
+            self._fts_delete("memory", memory_id)
+            return
+        text = self._memory_text(row)
+        vector = self.embedder.embed(text)
+        R.upsert_vector(self.conn, "memory", memory_id, self.embedder.model, vector, now=utcnow())
+        self._fts_upsert("memory", memory_id, R.fts_text(text))
+
+    def _index_document(self, document_id: str) -> None:
+        row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+        if row is None:
+            R.delete_vector(self.conn, "document", document_id)
+            self._fts_delete("document", document_id)
+            return
+        text = f"{row['title']}\n{row['content']}"
+        vector = self.embedder.embed(text)
+        R.upsert_vector(self.conn, "document", document_id, self.embedder.model, vector, now=utcnow())
+        self._fts_upsert("document", document_id, R.fts_text(text))
+
+    def _fts_upsert(self, owner_kind: str, owner_id: str, tokens: str) -> None:
+        try:
+            R.upsert_fts(self.conn, owner_kind, owner_id, tokens)
+        except sqlite3.OperationalError:  # pragma: no cover - build without FTS5
+            pass
+
+    def _fts_delete(self, owner_kind: str, owner_id: str) -> None:
+        try:
+            R.delete_fts(self.conn, owner_kind, owner_id)
+        except sqlite3.OperationalError:  # pragma: no cover
+            pass
+
+    def _vector_count(self, owner_kind: str) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM vectors WHERE owner_kind = ? AND model = ?",
+            (owner_kind, self.embedder.model),
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
+    def ensure_index(self, *, limit: int | None = None) -> dict[str, int]:
+        """Backfill missing/stale vectors and FTS rows (idempotent, cheap when warm)."""
+        indexed = 0
+        missing = self.conn.execute(
+            "SELECT m.id FROM memories m LEFT JOIN vectors v "
+            "ON v.owner_kind = 'memory' AND v.owner_id = m.id AND v.model = ? "
+            "WHERE m.status = 'active' AND v.owner_id IS NULL",
+            (self.embedder.model,),
+        ).fetchall()
+        for row in missing[: limit or 100000]:
+            self._index_memory(row["id"])
+            indexed += 1
+        docs = self.conn.execute(
+            "SELECT d.id FROM documents d LEFT JOIN vectors v "
+            "ON v.owner_kind = 'document' AND v.owner_id = d.id AND v.model = ? "
+            "WHERE v.owner_id IS NULL",
+            (self.embedder.model,),
+        ).fetchall()
+        for row in docs[: limit or 100000]:
+            self._index_document(row["id"])
+            indexed += 1
+        if indexed:
+            self.conn.commit()
+        return {"indexed": indexed, "model": self.embedder.model}
 
     # ------------------------------------------------------------------
     # identity / directives
@@ -503,6 +585,7 @@ class AgentSyncService:
         )
         self._audit("bootstrap", context_version, {"agent_id": resolved_agent, "client": client, "project_id": project["id"] if project else None})
         self.conn.commit()
+        self._maybe_auto_maintain()
 
         project_id = project["id"] if project else None
         recent = self._recent_items(project_id)
@@ -566,17 +649,71 @@ class AgentSyncService:
         }
 
     def _bootstrap_memories(self, project_id: str | None, limit: int | None = None) -> list[dict[str, Any]]:
+        """Pick what a fresh session actually needs, under a character budget.
+
+        Ordering is by salience (recency + importance + usage + type), not by
+        ``updated_at`` alone, and the payload is trimmed to the fields a model
+        needs to act: id / type / topic / content / pinned.  ``rationale``,
+        ``conditions`` and provenance stay retrievable through memory_search.
+        """
         if limit is None:
             try:
-                limit = int(os.environ.get("MEMBRIDGE_BOOTSTRAP_MEMORY_LIMIT", "20"))
+                limit = int(os.environ.get("MEMBRIDGE_BOOTSTRAP_MEMORY_LIMIT", "12"))
             except ValueError:
-                limit = 20
+                limit = 12
+        try:
+            budget = int(os.environ.get("MEMBRIDGE_BOOTSTRAP_CHAR_BUDGET", "6000"))
+        except ValueError:
+            budget = 6000
+        max_items = max(1, min(int(limit), 50))
         rows = self.conn.execute(
             "SELECT * FROM memories WHERE status = 'active' AND project_id IS ? "
-            "ORDER BY pinned DESC, updated_at DESC LIMIT ?",
-            (project_id, max(1, min(int(limit), 100))),
+            "ORDER BY pinned DESC, updated_at DESC LIMIT 200",
+            (project_id,),
         ).fetchall()
-        return [self._memory_dict(row) for row in rows]
+        now = datetime.now(timezone.utc).timestamp()
+        ranked = sorted(
+            rows,
+            key=lambda row: (
+                (1 if row["pinned"] else 0),
+                R.salience(
+                    item_type=row["type"],
+                    confidence=row["confidence"],
+                    importance=row["importance"] if "importance" in row.keys() else 3,
+                    hits=row["hits"] if "hits" in row.keys() else 0,
+                    updated_at=row["updated_at"],
+                    last_hit_at=row["last_hit_at"] if "last_hit_at" in row.keys() else None,
+                    now=now,
+                ),
+            ),
+            reverse=True,
+        )
+        selected: list[dict[str, Any]] = []
+        used = 0
+        seen_topics: set[str] = set()
+        for row in ranked:
+            if len(selected) >= max_items:
+                break
+            topic = row["topic"] or ""
+            if topic and topic in seen_topics:
+                continue
+            item = self._memory_dict(row)
+            item.pop("rationale", None)
+            item.pop("conditions", None)
+            item.pop("source", None)
+            item.pop("evidence_quote", None)
+            content = item.get("content") or ""
+            if len(content) > 320:
+                content = content[:317] + "..."
+            item["content"] = content
+            cost = len(content) + len(topic) + 80
+            if used + cost > budget and selected:
+                continue
+            used += cost
+            selected.append(item)
+            if topic:
+                seen_topics.add(topic)
+        return selected
 
     def _count(self, table: str, project_id: str | None) -> int:
         if project_id:
@@ -667,6 +804,10 @@ class AgentSyncService:
             "episode_id": row["episode_id"],
             "evidence_quote": row["evidence_quote"],
             "version": row["version"],
+            "importance": row["importance"] if "importance" in row.keys() else 3,
+            "hits": row["hits"] if "hits" in row.keys() else 0,
+            "last_hit_at": row["last_hit_at"] if "last_hit_at" in row.keys() else None,
+            "archived_at": row["archived_at"] if "archived_at" in row.keys() else None,
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
@@ -699,6 +840,8 @@ class AgentSyncService:
         source: str = "agent",
         evidence_quote: str | None = None,
         pinned: bool | None = None,
+        importance: int | None = None,
+        force: bool = False,
     ) -> dict[str, Any]:
         """The normal AI-facing write path: direct active upsert, no approval queue.
 
@@ -731,12 +874,26 @@ class AgentSyncService:
             "SELECT * FROM memories WHERE project_id IS ? AND topic = ? AND status = 'active' LIMIT 1",
             (target_project, topic),
         ).fetchone()
+        if not existing and not force:
+            # mem0-style write gate: a nearly identical memory under another
+            # topic is a duplicate, not a new fact.  Returning the existing id
+            # keeps the store small and avoids two copies drifting apart.
+            similar = self._nearest_similar(self.embedder.embed(content), {target_project, None})
+            if similar and similar["similarity"] >= 0.92:
+                return {
+                    "memory_id": similar["memory_id"],
+                    "topic": similar["topic"],
+                    "status": "active",
+                    "action": "duplicate",
+                    "similarity": round(similar["similarity"], 3),
+                    "hint": "Nearly identical memory already exists; pass force=true only if this really is a different fact.",
+                }
         now = utcnow()
         if existing:
             self.conn.execute(
                 "UPDATE memories SET type = ?, content = ?, confidence = ?, source = ?, topic = ?, "
                 "rationale = ?, conditions = ?, evidence_quote = ?, content_hash = ?, pinned = ?, "
-                "version = version + 1, updated_at = ? WHERE id = ?",
+                "importance = ?, version = version + 1, updated_at = ? WHERE id = ?",
                 (
                     type,
                     content.strip(),
@@ -748,18 +905,21 @@ class AgentSyncService:
                     evidence_quote,
                     digest,
                     existing["pinned"] if pinned is None else (1 if pinned else 0),
+                    int(importance) if importance is not None else (existing["importance"] or 3),
                     now,
                     existing["id"],
                 ),
             )
             self._audit("memory.write", existing["id"], {"topic": topic, "project_id": target_project, "updated": True})
+            self._index_memory(existing["id"])
             self.conn.commit()
-            return {"memory_id": existing["id"], "project_id": target_project, "status": "active", "version": existing["version"] + 1}
+            return {"memory_id": existing["id"], "project_id": target_project, "status": "active", "version": existing["version"] + 1, "action": "updated"}
+
         memory_id = new_id("mem")
         self.conn.execute(
             "INSERT INTO memories(id, project_id, type, content, confidence, source, status, topic, rationale, "
-            "conditions, evidence_quote, content_hash, pinned, version, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+            "conditions, evidence_quote, content_hash, pinned, importance, version, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
             (
                 memory_id,
                 target_project,
@@ -773,13 +933,15 @@ class AgentSyncService:
                 evidence_quote,
                 digest,
                 1 if pinned else 0,
+                int(importance) if importance is not None else self._default_importance(type),
                 now,
                 now,
             ),
         )
         self._audit("memory.write", memory_id, {"topic": topic, "project_id": target_project, "updated": False})
+        self._index_memory(memory_id)
         self.conn.commit()
-        return {"memory_id": memory_id, "project_id": target_project, "status": "active", "version": 1}
+        return {"memory_id": memory_id, "project_id": target_project, "status": "active", "version": 1, "action": "created"}
 
     def memory_add(
         self,
@@ -832,8 +994,39 @@ class AgentSyncService:
             ),
         )
         self._audit("memory.add", memory_id, {"project_id": target_project, "type": type, "episode_id": episode_id})
+        self._index_memory(memory_id)
         self.conn.commit()
         return {"memory_id": memory_id, "project_id": target_project, "type": type, "status": "active"}
+
+    @staticmethod
+    def _default_importance(item_type: str) -> int:
+        return {"preference": 5, "decision": 5, "lesson": 4, "procedure": 4, "fact": 3, "reference": 2}.get(item_type, 3)
+
+    def _nearest_similar(self, query_vector: list[float], project_ids: set[str | None]) -> dict[str, Any] | None:
+        rows = self.conn.execute(
+            "SELECT m.id, m.topic, m.project_id, v.vec FROM memories m "
+            "JOIN vectors v ON v.owner_kind = 'memory' AND v.owner_id = m.id AND v.model = ? "
+            "WHERE m.status = 'active'",
+            (self.embedder.model,),
+        ).fetchall()
+        best: dict[str, Any] | None = None
+        for row in rows:
+            if row["project_id"] not in project_ids:
+                continue
+            sim = R.cosine(query_vector, R.unpack_vector(row["vec"]))
+            if best is None or sim > best["similarity"]:
+                best = {"memory_id": row["id"], "topic": row["topic"], "similarity": sim}
+        return best
+
+    def _maybe_backfill(self) -> None:
+        active = self.conn.execute("SELECT COUNT(*) AS n FROM memories WHERE status = 'active'").fetchone()["n"]
+        if self._meta("index_model") == self.embedder.model and self._vector_count("memory") >= int(active):
+            return
+        stats = self.ensure_index()
+        self._set_meta("index_model", self.embedder.model)
+        self.conn.commit()
+        if stats["indexed"]:
+            self._audit("index.backfill", None, stats)
 
     def memory_search(
         self,
@@ -843,6 +1036,7 @@ class AgentSyncService:
         project_id: str | None = None,
         scope: str = "auto",
         k: int = 8,
+        touch: bool = True,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
         selected = project_id if project_id is not None else session["project_id"]
@@ -857,36 +1051,118 @@ class AgentSyncService:
         else:
             allowed = {selected, None} if selected else {None}
 
+        self._maybe_backfill()
         project_map = {row["id"]: self._project_dict(row) for row in self.conn.execute("SELECT * FROM projects").fetchall()}
-        rows = self.conn.execute(
-            "SELECT * FROM memories WHERE status = 'active' ORDER BY updated_at DESC"
-        ).fetchall()
-        scored: list[tuple[float, Any]] = []
-        for row in rows:
-            if allowed is not None and row["project_id"] not in allowed:
-                continue
-            score = _score(
-                query,
-                row["content"],
-                confidence=row["confidence"],
-                updated_at=row["updated_at"],
+        candidates = {
+            row["id"]: row
+            for row in self.conn.execute("SELECT * FROM memories WHERE status = 'active'").fetchall()
+            if allowed is None or row["project_id"] in allowed
+        }
+        if not candidates:
+            return {"query": query, "scope": scope, "project_id": selected, "items": [], "count": 0}
+
+        lex = [(oid, score) for oid, score in R.bm25_ranking(self.conn, query, "memory", limit=300) if oid in candidates]
+        vectors = R.load_vectors(self.conn, "memory", list(candidates), model=self.embedder.model)
+        query_vector = self.embedder.embed(query)
+        vec = [(oid, score) for oid, score in R.vector_ranking(vectors, query_vector, limit=300) if oid in candidates]
+        lex_rank = {oid: idx + 1 for idx, (oid, _) in enumerate(lex)}
+        vec_rank = {oid: idx + 1 for idx, (oid, _) in enumerate(vec)}
+        lex_score = dict(lex)
+        vec_score = dict(vec)
+        # A hashed (lexical) vector adds nothing on top of BM25 - it is the same
+        # signal twice - so it only contributes when the embedder is semantic.
+        vector_is_semantic = self.embedder.provider != "hash"
+        fused = R.weighted_rrf(
+            [
+                ([oid for oid, _ in lex], 1.0 if vector_is_semantic else 0.0),
+                ([oid for oid, _ in vec], 1.0 if vector_is_semantic else 0.0),
+            ],
+            k=60,
+        )
+        max_lex = max((score for _, score in lex), default=0.0) or 1.0
+        max_rrf = max(fused.values(), default=0.0) or 1.0
+
+        query_norm = (query or "").strip().lower()
+        now_ts = datetime.now(timezone.utc).timestamp()
+        scored: list[tuple[float, Any, dict[str, float]]] = []
+        for oid in set(lex_score) | set(vec_score):
+            row = candidates[oid]
+            sal = R.salience(
                 item_type=row["type"],
+                confidence=row["confidence"],
+                importance=row["importance"] if "importance" in row.keys() else 3,
+                hits=row["hits"] if "hits" in row.keys() else 0,
+                updated_at=row["updated_at"],
+                last_hit_at=row["last_hit_at"] if "last_hit_at" in row.keys() else None,
+                now=now_ts,
             )
-            if score > 0:
-                scored.append((score, row))
-        scored.sort(key=lambda x: (x[0], x[1]["updated_at"]), reverse=True)
+            # Score fusion beats pure RRF here: when one signal is decisive
+            # (top cosine 0.46 vs 0.36) the strong hit should stay on top even
+            # though it is absent from the lexical top-10.
+            # Saturating normalisation instead of max-normalisation: a weak BM25
+            # top hit must not score a full 1.0, otherwise a decisive cosine
+            # match (0.46 vs 0.36) can never win. 6.0 is roughly the median
+            # BM25 top-1 on this corpus.
+            lex_norm = 1.0 - math.exp(-max(0.0, lex_score.get(oid, 0.0)) / 6.0)
+            cos = max(0.0, vec_score.get(oid, 0.0))
+            base = lex_norm + (cos if vector_is_semantic else 0.0)
+            exact = 1.0 if len(query_norm) >= 4 and query_norm in (row["content"] or "").lower() else 0.0
+            final = base * (0.75 + 0.25 * sal) * (1.1 if row["pinned"] else 1.0)
+            final += 0.05 * (fused.get(oid, 0.0) / max_rrf) + 0.004 * exact
+            scored.append(
+                (
+                    final,
+                    row,
+                    {
+                        "rrf": fused.get(oid, 0.0),
+                        "salience": sal,
+                        "exact": exact,
+                        "lexical": lex_score.get(oid, 0.0),
+                        "vector": vec_score.get(oid, 0.0),
+                        "lex_rank": lex_rank.get(oid, 0),
+                        "vec_rank": vec_rank.get(oid, 0),
+                    },
+                )
+            )
+        scored.sort(key=lambda item: item[0], reverse=True)
+
         terms = tokenize(query)
         items = []
-        for score, row in scored[: max(1, min(int(k), 50))]:
+        top = scored[: max(1, min(int(k), 50))]
+        for score, row, breakdown in top:
             item = self._memory_dict(row)
             project = project_map.get(row["project_id"])
             item["project_key"] = project["key"] if project else "global"
             item["project_name"] = project["name"] if project else "global"
-            item["score"] = round(score, 3)
+            item["score"] = round(score, 4)
+            item["scores"] = {key: round(value, 4) for key, value in breakdown.items()}
             item["snippet"] = _snippet(row["content"], terms)
             item["citation"] = f"[mem:{row['id']}]"
             items.append(item)
-        return {"query": query, "scope": scope, "project_id": selected, "items": items, "count": len(items)}
+
+        if touch and items:
+            now = utcnow()
+            ids = [item["id"] for item in items]
+            placeholders = ",".join("?" for _ in ids)
+            self.conn.execute(
+                f"UPDATE memories SET hits = hits + 1, last_hit_at = ? WHERE id IN ({placeholders})",
+                (now, *ids),
+            )
+            self.conn.commit()
+        return {
+            "query": query,
+            "scope": scope,
+            "project_id": selected,
+            "items": items,
+            "count": len(items),
+            "retrieval": {
+                "mode": "hybrid-rrf",
+                "embedder": self.embedder.model,
+                "lexical_candidates": len(lex),
+                "vector_candidates": len(vec),
+                "scanned": len(candidates),
+            },
+        }
 
     def memory_list(
         self,
@@ -959,6 +1235,7 @@ class AgentSyncService:
         *,
         content: str | None = None,
         confidence: float | None = None,
+        importance: int | None = None,
     ) -> dict[str, Any]:
         session = self.validate_context(context_version)
         row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
@@ -973,10 +1250,18 @@ class AgentSyncService:
         digest = _content_hash(new_content)
         self.conn.execute(
             "UPDATE memories SET content = ?, confidence = ?, content_hash = ?, "
-            "version = version + 1, updated_at = ? WHERE id = ?",
-            (new_content, new_confidence, digest, utcnow(), memory_id),
+            "importance = ?, version = version + 1, updated_at = ? WHERE id = ?",
+            (
+                new_content,
+                new_confidence,
+                digest,
+                int(importance) if importance is not None else (row["importance"] or 3),
+                utcnow(),
+                memory_id,
+            ),
         )
         self._audit("memory.update", memory_id, {"version": row["version"] + 1})
+        self._index_memory(memory_id)
         self.conn.commit()
         return {"memory_id": memory_id, "version": row["version"] + 1}
 
@@ -994,8 +1279,153 @@ class AgentSyncService:
             (utcnow(), utcnow(), memory_id),
         )
         self._audit("memory.delete", memory_id, {"previous_status": row["status"]})
+        R.delete_vector(self.conn, "memory", memory_id)
+        self._fts_delete("memory", memory_id)
         self.conn.commit()
         return {"memory_id": memory_id, "status": "deleted"}
+
+    # ------------------------------------------------------------------
+    # lifecycle: archive / restore / maintenance
+    # ------------------------------------------------------------------
+    def memory_archive(self, context_version: str, memory_id: str, *, reason: str = "manual") -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown memory_id: {memory_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("memory is outside the current project scope")
+        if row["status"] == "archived":
+            return {"memory_id": memory_id, "status": "archived", "already": True}
+        now = utcnow()
+        self.conn.execute(
+            "UPDATE memories SET status = 'archived', archived_at = ?, archive_reason = ?, "
+            "version = version + 1, updated_at = ? WHERE id = ?",
+            (now, reason, now, memory_id),
+        )
+        self._audit("memory.archive", memory_id, {"reason": reason, "previous_status": row["status"]})
+        R.delete_vector(self.conn, "memory", memory_id)
+        self._fts_delete("memory", memory_id)
+        self.conn.commit()
+        return {"memory_id": memory_id, "status": "archived", "reason": reason}
+
+    def memory_restore(self, context_version: str, memory_id: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        row = self.conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"unknown memory_id: {memory_id}")
+        if row["project_id"] not in {session["project_id"], None}:
+            raise ValueError("memory is outside the current project scope")
+        if row["status"] == "active":
+            return {"memory_id": memory_id, "status": "active", "already": True}
+        now = utcnow()
+        self.conn.execute(
+            "UPDATE memories SET status = 'active', deleted_at = NULL, archived_at = NULL, "
+            "archive_reason = NULL, version = version + 1, updated_at = ? WHERE id = ?",
+            (now, memory_id),
+        )
+        self._audit("memory.restore", memory_id, {"previous_status": row["status"]})
+        self._index_memory(memory_id)
+        self.conn.commit()
+        return {"memory_id": memory_id, "status": "active"}
+
+    def memory_maintain(
+        self,
+        context_version: str,
+        *,
+        dry_run: bool = False,
+        threshold: float | None = None,
+    ) -> dict[str, Any]:
+        """Run the forgetting pass: archive stale low-value memories, never delete.
+
+        ``decision`` / ``lesson`` / ``preference`` and pinned rows are protected.
+        The pass also backfills the vector/BM25 index for anything missing.
+        """
+        self.validate_context(context_version)
+        return self._maintain_core(dry_run=dry_run, threshold=threshold)
+
+    def _maintain_core(self, *, dry_run: bool = False, threshold: float | None = None) -> dict[str, Any]:
+        index_stats = self.ensure_index()
+        self._set_meta("index_model", self.embedder.model)
+        self._set_meta("last_maintain", utcnow())
+        cutoff = float(threshold) if threshold is not None else R.ARCHIVE_THRESHOLD
+        now_ts = datetime.now(timezone.utc).timestamp()
+        rows = self.conn.execute("SELECT * FROM memories WHERE status = 'active'").fetchall()
+        archived: list[dict[str, Any]] = []
+        stale: list[dict[str, Any]] = []
+        for row in rows:
+            score = R.decay_score(
+                item_type=row["type"],
+                confidence=row["confidence"],
+                importance=row["importance"] if "importance" in row.keys() else 3,
+                hits=row["hits"] if "hits" in row.keys() else 0,
+                updated_at=row["updated_at"],
+                last_hit_at=row["last_hit_at"] if "last_hit_at" in row.keys() else None,
+                now=now_ts,
+            )
+            if R.should_archive(row, now=now_ts, threshold=cutoff):
+                entry = {"memory_id": row["id"], "topic": row["topic"], "type": row["type"], "decay": round(score, 3)}
+                archived.append(entry)
+                if not dry_run:
+                    self.conn.execute(
+                        "UPDATE memories SET status = 'archived', archived_at = ?, "
+                        "archive_reason = ?, version = version + 1 WHERE id = ?",
+                        (utcnow(), f"decay<{cutoff}", row["id"]),
+                    )
+                    R.delete_vector(self.conn, "memory", row["id"])
+                    self._fts_delete("memory", row["id"])
+            elif score < cutoff * 1.6:
+                stale.append({"memory_id": row["id"], "topic": row["topic"], "decay": round(score, 3)})
+        if not dry_run and archived:
+            self._audit("memory.maintain", None, {"archived": len(archived), "threshold": cutoff})
+        self.conn.commit()
+        return {
+            "dry_run": dry_run,
+            "threshold": cutoff,
+            "scanned": len(rows),
+            "archived": archived,
+            "near_threshold": sorted(stale, key=lambda item: item["decay"])[:20],
+            "index": index_stats,
+        }
+
+    def _maybe_auto_maintain(self) -> None:
+        """Run the forgetting pass at most once per day, on bootstrap.
+
+        The hub is a long-running service; relying on an agent to call
+        memory_maintain means forgetting never happens in quiet periods.
+        """
+        if os.environ.get("MEMBRIDGE_AUTO_MAINTAIN", "1") == "0":
+            return
+        last = self._meta("last_maintain") or ""
+        if last and R.age_days(last) < 1.0:
+            return
+        try:
+            self._maintain_core()
+        except sqlite3.OperationalError:
+            pass
+
+
+    def memory_stats(self, context_version: str) -> dict[str, Any]:
+        session = self.validate_context(context_version)
+        by_status = {row["status"]: row["n"] for row in self.conn.execute(
+            "SELECT status, COUNT(*) AS n FROM memories GROUP BY status"
+        ).fetchall()}
+        by_type = {row["type"]: row["n"] for row in self.conn.execute(
+            "SELECT type, COUNT(*) AS n FROM memories WHERE status = 'active' GROUP BY type"
+        ).fetchall()}
+        avg_len = self.conn.execute(
+            "SELECT AVG(LENGTH(content)) AS avg FROM memories WHERE status = 'active'"
+        ).fetchone()["avg"]
+        return {
+            "project_id": session["project_id"],
+            "by_status": by_status,
+            "by_type": by_type,
+            "avg_content_chars": round(float(avg_len or 0), 1),
+            "indexed_vectors": {
+                "memory": self._vector_count("memory"),
+                "document": self._vector_count("document"),
+            },
+            "embedder": self.embedder.model,
+        }
 
     # ------------------------------------------------------------------
     # documents
@@ -1034,6 +1464,7 @@ class AgentSyncService:
             )
             action = "doc.add"
         self._audit(action, doc_id, {"path": path, "project_id": target})
+        self._index_document(doc_id)
         self.conn.commit()
         return {"document_id": doc_id, "path": path, "title": doc_title, "project_id": target}
 
@@ -1050,16 +1481,27 @@ class AgentSyncService:
         if scope not in {"auto", "project", "global", "all"}:
             raise ValueError("scope must be auto, project, global or all")
         selected = project_id if project_id is not None else session["project_id"]
-        rows = self.conn.execute("SELECT * FROM documents ORDER BY updated_at DESC").fetchall()
-        scored: list[tuple[float, Any]] = []
-        for row in rows:
-            if not self._doc_scope_allows(row["project_id"], selected, scope):
-                continue
-            text = f"{row['title']}\n{row['content']}"
-            score = _score(query, text, updated_at=row["updated_at"], item_type="reference")
-            if score > 0:
-                scored.append((score, row))
-        scored.sort(key=lambda x: x[0], reverse=True)
+        self._maybe_backfill()
+        candidates = {
+            row["id"]: row
+            for row in self.conn.execute("SELECT * FROM documents").fetchall()
+            if self._doc_scope_allows(row["project_id"], selected, scope)
+        }
+        if not candidates:
+            return {"query": query, "scope": scope, "items": [], "count": 0}
+        lex = [(oid, score) for oid, score in R.bm25_ranking(self.conn, query, "document", limit=200) if oid in candidates]
+        vectors = R.load_vectors(self.conn, "document", list(candidates), model=self.embedder.model)
+        query_vector = self.embedder.embed(query)
+        vec = [(oid, score) for oid, score in R.vector_ranking(vectors, query_vector, limit=200) if oid in candidates]
+        lex_rank = {oid: idx + 1 for idx, (oid, _) in enumerate(lex)}
+        vec_rank = {oid: idx + 1 for idx, (oid, _) in enumerate(vec)}
+        fused = R.rrf_fuse([[oid for oid, _ in lex], [oid for oid, _ in vec]], k=60)
+        scored = []
+        for oid, rrf in fused.items():
+            row = candidates[oid]
+            freshness = math.exp(-math.log(2) * R.age_days(row["updated_at"]) / 180.0)
+            scored.append((rrf * (0.7 + 0.3 * freshness), row))
+        scored.sort(key=lambda item: item[0], reverse=True)
         terms = tokenize(query)
         items = []
         for score, row in scored[: max(1, min(int(k), 20))]:
@@ -1069,12 +1511,19 @@ class AgentSyncService:
                     "title": row["title"],
                     "path": row["path"],
                     "project_id": row["project_id"],
-                    "score": round(score, 3),
+                    "score": round(score, 4),
+                    "scores": {"lex_rank": lex_rank.get(row["id"], 0), "vec_rank": vec_rank.get(row["id"], 0)},
                     "snippet": _snippet(row["content"], terms),
                     "citation": f"[doc:{row['id']}]",
                 }
             )
-        return {"query": query, "scope": scope, "items": items, "count": len(items)}
+        return {
+            "query": query,
+            "scope": scope,
+            "items": items,
+            "count": len(items),
+            "retrieval": {"mode": "hybrid-rrf", "embedder": self.embedder.model},
+        }
 
     @staticmethod
     def _doc_scope_allows(project_id: str | None, selected: str | None, scope: str) -> bool:
@@ -1160,6 +1609,8 @@ class AgentSyncService:
             raise ValueError("document is outside the current project scope")
         self.conn.execute("DELETE FROM documents WHERE id = ?", (row["id"],))
         self._audit("doc.delete", row["id"], {"path": row["path"], "project_id": row["project_id"]})
+        R.delete_vector(self.conn, "document", row["id"])
+        self._fts_delete("document", row["id"])
         self.conn.commit()
         return {"document_id": row["id"], "deleted": True}
 

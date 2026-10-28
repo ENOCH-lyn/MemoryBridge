@@ -14,6 +14,8 @@ import os
 import sys
 import threading
 import time
+
+from . import __version__
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -68,6 +70,10 @@ ALLOWED_METHODS = {
     "memory_feedback",
     "memory_update",
     "memory_delete",
+    "memory_archive",
+    "memory_restore",
+    "memory_maintain",
+    "memory_stats",
     "doc_add",
     "doc_list",
     "doc_delete",
@@ -293,7 +299,7 @@ class HubHandler(BaseHTTPRequestHandler):
             self._send_body(204, b"", "image/x-icon")
             return
         if self.path == "/health":
-            self._send_json(200, {"ok": True, "service": "membridge", "version": "0.1.0"})
+            self._send_json(200, {"ok": True, "service": "membridge", "version": __version__})
             return
         if self.path == "/me":
             svc = self._service()

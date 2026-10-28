@@ -45,7 +45,18 @@ class McpTest(unittest.TestCase):
         svc.close()
 
     def tearDown(self) -> None:
-        self.tmp.cleanup()
+        # Windows keeps the SQLite file handle alive for a moment after the
+        # child process exits, so a single cleanup() can race with it.
+        import gc
+        import time
+
+        for _ in range(10):
+            try:
+                self.tmp.cleanup()
+                return
+            except PermissionError:
+                gc.collect()
+                time.sleep(0.2)
 
     def test_initialize_tools_and_bootstrap_gate(self) -> None:
         responses = _run_mcp(

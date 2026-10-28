@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import sys
 import traceback
+
+from . import __version__
 from typing import Any
 
 from .service import AgentSyncService, GateError
@@ -94,7 +96,11 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "memory_search",
         "title": "Search memory",
-        "description": "Search active memories. scope=auto (current project + global), project, global, or all (cross-project). Requires agent_bootstrap first.",
+        "description": (
+            "Hybrid search (BM25 + vector, RRF-fused, salience-weighted) over active memories. "
+            "scope=auto (current project + global), project, global, or all (cross-project). "
+            "Each hit carries a scores breakdown (lex_rank/vec_rank/salience). Requires agent_bootstrap first."
+        ),
         "inputSchema": _schema(
             {
                 "context_version": CTX,
@@ -147,6 +153,8 @@ TOOLS: list[dict[str, Any]] = [
                 "source": {"type": "string"},
                 "evidence_quote": {"type": "string"},
                 "pinned": {"type": "boolean", "description": "Inject into future bootstrap context; use for catgirl core preferences."},
+                "importance": {"type": "integer", "minimum": 1, "maximum": 5, "description": "1=trivia, 5=must never forget. Defaults by type."},
+                "force": {"type": "boolean", "description": "Write even when a nearly identical memory exists (cosine >= 0.92)."},
             },
             ["context_version", "content", "topic"],
         ),
@@ -198,17 +206,66 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "memory_update",
         "title": "Update memory",
-        "description": "Update a memory's content or confidence; bumps version. Requires bootstrap.",
+        "description": "Update a memory's content, confidence or importance (1-5); bumps version and re-indexes. Requires bootstrap.",
         "inputSchema": _schema(
             {
                 "context_version": CTX,
                 "memory_id": {"type": "string"},
                 "content": {"type": "string"},
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "importance": {"type": "integer", "minimum": 1, "maximum": 5},
             },
             ["context_version", "memory_id"],
         ),
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_archive",
+        "title": "Archive memory",
+        "description": (
+            "Move a memory to status=archived (recoverable with memory_restore). "
+            "Use instead of deleting when a fact is outdated but historically useful. Requires bootstrap."
+        ),
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "memory_id": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            ["context_version", "memory_id"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "memory_restore",
+        "title": "Restore memory",
+        "description": "Bring a deleted or archived memory back to active and re-index it. Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX, "memory_id": {"type": "string"}}, ["context_version", "memory_id"]),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "memory_maintain",
+        "title": "Run forgetting pass",
+        "description": (
+            "Backfill the vector/BM25 index and archive stale low-value memories (decay-based, never deletes, "
+            "never touches pinned/decision/lesson/preference). dry_run=true only reports. Requires bootstrap."
+        ),
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "dry_run": {"type": "boolean"},
+                "threshold": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            ["context_version"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_stats",
+        "title": "Memory statistics",
+        "description": "Counts by status/type, average content size and index coverage (read-only). Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX}, ["context_version"]),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
     },
     {
         "name": "memory_delete",
@@ -448,6 +505,8 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 source=args.get("source", "agent"),
                 evidence_quote=args.get("evidence_quote"),
                 pinned=args.get("pinned"),
+                importance=args.get("importance"),
+                force=bool(args.get("force", False)),
             )
         )
     if name == "identity_update":
@@ -499,8 +558,23 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 args["memory_id"],
                 content=args.get("content"),
                 confidence=args.get("confidence"),
+                importance=args.get("importance"),
             )
         )
+    if name == "memory_archive":
+        return _ok(service.memory_archive(ctx, args["memory_id"], reason=args.get("reason", "manual")))
+    if name == "memory_restore":
+        return _ok(service.memory_restore(ctx, args["memory_id"]))
+    if name == "memory_maintain":
+        return _ok(
+            service.memory_maintain(
+                ctx,
+                dry_run=bool(args.get("dry_run", False)),
+                threshold=args.get("threshold"),
+            )
+        )
+    if name == "memory_stats":
+        return _ok(service.memory_stats(ctx))
     if name == "memory_delete":
         return _ok(service.memory_delete(ctx, args["memory_id"]))
     if name == "memory_feedback":
@@ -608,7 +682,7 @@ def handle_request(service: AgentSyncService, req: dict[str, Any], default_proje
                 "resources": {"subscribe": False, "listChanged": False},
                 "prompts": {"listChanged": False},
             },
-            "serverInfo": {"name": "membridge", "version": "0.1.0"},
+            "serverInfo": {"name": "membridge", "version": __version__},
             "instructions": INSTRUCTIONS,
         }
     if method == "ping":

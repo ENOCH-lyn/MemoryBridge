@@ -156,6 +156,16 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at       TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS vectors (
+    owner_kind TEXT NOT NULL,
+    owner_id   TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    dim        INTEGER NOT NULL,
+    vec        BLOB NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (owner_kind, owner_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     at         TEXT NOT NULL,
@@ -206,8 +216,26 @@ def connect(db_path: str | os.PathLike[str]) -> sqlite3.Connection:
     return conn
 
 
+def _init_fts(conn: sqlite3.Connection) -> None:
+    """Create the FTS5 index when the SQLite build supports it.
+
+    FTS5 ships with CPython's bundled SQLite on every platform we care about,
+    but the service must still boot on stripped-down builds, so a failure here
+    is non-fatal: retrieval falls back to vectors only.
+    """
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
+            "owner_kind UNINDEXED, owner_id UNINDEXED, tokens, "
+            "tokenize='unicode61 remove_diacritics 2')"
+        )
+    except sqlite3.OperationalError:
+        pass
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _init_fts(conn)
     # Lightweight migration for databases created before the stable project key.
     columns = {row[1] for row in conn.execute("PRAGMA table_info(projects)").fetchall()}
     if "key" not in columns:
@@ -233,6 +261,17 @@ def init_db(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE memories ADD COLUMN {column} TEXT")
     if "pinned" not in memory_columns:
         conn.execute("ALTER TABLE memories ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+    memory_columns = {row[1] for row in conn.execute("PRAGMA table_info(memories)").fetchall()}
+    for column, ddl in {
+        "importance": "INTEGER NOT NULL DEFAULT 3",
+        "hits": "INTEGER NOT NULL DEFAULT 0",
+        "last_hit_at": "TEXT",
+        "archived_at": "TEXT",
+        "archive_reason": "TEXT",
+        "supersedes_id": "TEXT",
+    }.items():
+        if column not in memory_columns:
+            conn.execute(f"ALTER TABLE memories ADD COLUMN {column} {ddl}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_topic ON memories(project_id, topic, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_pinned ON memories(project_id, status, pinned)")
