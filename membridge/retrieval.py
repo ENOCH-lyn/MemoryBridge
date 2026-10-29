@@ -372,6 +372,42 @@ def reset_embedder() -> None:
 # ranking
 # ---------------------------------------------------------------------------
 
+#: Patterns that look like an instruction smuggled into stored memory.  We do
+#: not try to be clever - we flag and neutralise the obvious ones, and the
+#: bootstrap payload tells the client to treat memories as data.
+_INJECTION_PATTERNS = (
+    re.compile(r"ignore (all )?(previous|prior|above) (instructions|prompts?)", re.I),
+    re.compile(r"忽略(以上|之前|前面)(所有)?(的)?(指令|提示|要求)"),
+    re.compile(r"^\s*system\s*:", re.I | re.M),
+    re.compile(r"</?memory-data>", re.I),
+    re.compile(r"你现在是|从现在开始你(必须|要)"),
+)
+
+
+def sanitize_memory_text(text: str) -> tuple[str, int]:
+    """Neutralise obvious prompt-injection patterns in stored text.
+
+    Returns the cleaned text plus how many patterns fired, so callers can
+    report it in the write response instead of silently changing content.
+    """
+    cleaned = text or ""
+    hits = 0
+    for pattern in _INJECTION_PATTERNS:
+        cleaned, count = pattern.subn("[已屏蔽]", cleaned)
+        hits += count
+    return cleaned, hits
+
+
+def first_sentence(text: str, limit: int = 60) -> str:
+    """One-line digest used by the bootstrap memory map and related hints."""
+    body = (text or "").strip().replace("\n", " ")
+    for separator in ("。", "；", "！", "？", ". ", "; "):
+        index = body.find(separator)
+        if 0 < index <= limit:
+            return body[: index + len(separator)].strip()
+    return body[:limit].strip() + ("…" if len(body) > limit else "")
+
+
 #: Type weights used both in ranking and in the forgetting pass.
 TYPE_WEIGHT = {
     "preference": 1.0,
@@ -448,7 +484,10 @@ def salience(
     signal_at = last_hit_at or updated_at
     days = age_days(signal_at, now)
     freshness = math.exp(-math.log(2) * days / max(1.0, half_life_days))
-    usage = min(1.0, math.log1p(max(0, hits)) / math.log(11))
+    # Usage counts decay too, otherwise a burst of queries (or a test run)
+    # keeps a memory artificially "popular" forever.
+    hit_age = age_days(last_hit_at, now) if last_hit_at else 3650.0
+    usage = min(1.0, math.log1p(max(0, hits)) / math.log(11)) * math.exp(-math.log(2) * hit_age / 90.0)
     type_w = TYPE_WEIGHT.get(item_type, 0.75)
     imp = min(1.0, max(0.0, (int(importance or 3) - 1) / 4.0))
     conf = min(1.0, max(0.0, float(confidence or 0.5)))

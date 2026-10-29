@@ -107,6 +107,33 @@ CREATE TABLE IF NOT EXISTS memories (
 CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id, status);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type, status);
 
+-- Every content/status change is snapshotted here before the row is updated,
+-- so "what did this memory say last week" and revert are both answerable
+-- without keeping duplicate rows in `memories`.
+CREATE TABLE IF NOT EXISTS memory_revisions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_id      TEXT NOT NULL,
+    version        INTEGER NOT NULL,
+    type           TEXT,
+    topic          TEXT,
+    content        TEXT NOT NULL,
+    confidence     REAL,
+    importance     INTEGER,
+    pinned         INTEGER,
+    status         TEXT,
+    rationale      TEXT,
+    conditions     TEXT,
+    source         TEXT,
+    evidence_quote TEXT,
+    valid_from     TEXT,
+    valid_to       TEXT,
+    changed_at     TEXT NOT NULL,
+    changed_by     TEXT NOT NULL DEFAULT 'agent',
+    reason         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_revisions_memory ON memory_revisions(memory_id, version);
+CREATE INDEX IF NOT EXISTS idx_revisions_time ON memory_revisions(memory_id, changed_at);
+
 CREATE TABLE IF NOT EXISTS episodes (
     id          TEXT PRIMARY KEY,
     project_id  TEXT REFERENCES projects(id) ON DELETE CASCADE,
@@ -269,9 +296,15 @@ def init_db(conn: sqlite3.Connection) -> None:
         "archived_at": "TEXT",
         "archive_reason": "TEXT",
         "supersedes_id": "TEXT",
+        "valid_from": "TEXT",
+        "valid_to": "TEXT",
+        "superseded_by": "TEXT",
     }.items():
         if column not in memory_columns:
             conn.execute(f"ALTER TABLE memories ADD COLUMN {column} {ddl}")
+    conn.execute(
+        "UPDATE memories SET valid_from = COALESCE(valid_from, created_at) WHERE valid_from IS NULL"
+    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_hash ON memories(content_hash, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_topic ON memories(project_id, topic, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_pinned ON memories(project_id, status, pinned)")

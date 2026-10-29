@@ -91,6 +91,10 @@ ALLOWED_METHODS = {
     "status",
     "audit_list",
     "export_data",
+    "memory_history",
+    "memory_revert",
+    "memory_map",
+    "memory_backup",
 }
 
 

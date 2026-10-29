@@ -108,6 +108,7 @@ TOOLS: list[dict[str, Any]] = [
                 "project_id": {"type": "string"},
                 "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]},
                 "k": {"type": "integer", "minimum": 1, "maximum": 50},
+                "as_of": {"type": "string", "description": "Ask what was true at this date/time (YYYY-MM-DD or ISO timestamp)."},
             },
             ["context_version", "query"],
         ),
@@ -266,6 +267,54 @@ TOOLS: list[dict[str, Any]] = [
         "description": "Counts by status/type, average content size and index coverage (read-only). Requires bootstrap.",
         "inputSchema": _schema({"context_version": CTX}, ["context_version"]),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "memory_history",
+        "title": "Memory history",
+        "description": "Timeline of one memory (revisions + current): every previous content, when it changed and why. Requires bootstrap.",
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "memory_id": {"type": "string"},
+                "topic": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            },
+            ["context_version"],
+        ),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "memory_revert",
+        "title": "Revert memory",
+        "description": "Restore a previous revision as the new current version (current state is snapshotted first). Requires bootstrap.",
+        "inputSchema": _schema(
+            {"context_version": CTX, "memory_id": {"type": "string"}, "version": {"type": "integer", "minimum": 1}},
+            ["context_version", "memory_id", "version"],
+        ),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_map",
+        "title": "Memory map",
+        "description": "Compact table of contents (topic + one line) for the current scope, under a character budget. Requires bootstrap.",
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "project_id": {"type": "string"},
+                "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                "budget_chars": {"type": "integer", "minimum": 200, "maximum": 8000},
+            },
+            ["context_version"],
+        ),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "memory_backup",
+        "title": "Backup database",
+        "description": "Take an online SQLite snapshot into the backup directory (keeps the newest N, default 14). Requires bootstrap.",
+        "inputSchema": _schema({"context_version": CTX}, ["context_version"]),
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },
     {
         "name": "memory_delete",
@@ -528,6 +577,7 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 project_id=args.get("project_id"),
                 scope=args.get("scope", "auto"),
                 k=int(args.get("k", 8)),
+                as_of=args.get("as_of"),
             )
         )
     if name == "memory_add":
@@ -575,6 +625,29 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
         )
     if name == "memory_stats":
         return _ok(service.memory_stats(ctx))
+    if name == "memory_history":
+        return _ok(
+            service.memory_history(
+                ctx,
+                memory_id=args.get("memory_id"),
+                topic=args.get("topic"),
+                limit=int(args.get("limit", 20)),
+            )
+        )
+    if name == "memory_revert":
+        return _ok(service.memory_revert(ctx, args["memory_id"], int(args["version"])))
+    if name == "memory_map":
+        return _ok(
+            service.memory_map(
+                ctx,
+                project_id=args.get("project_id"),
+                scope=args.get("scope", "auto"),
+                limit=int(args.get("limit", 24)),
+                budget_chars=int(args.get("budget_chars", 1200)),
+            )
+        )
+    if name == "memory_backup":
+        return _ok(service.memory_backup(ctx))
     if name == "memory_delete":
         return _ok(service.memory_delete(ctx, args["memory_id"]))
     if name == "memory_feedback":
