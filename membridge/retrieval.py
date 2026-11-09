@@ -38,6 +38,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+from . import netutil
+
 # ---------------------------------------------------------------------------
 # text processing
 # ---------------------------------------------------------------------------
@@ -272,7 +274,7 @@ class HttpEmbedder:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+        with netutil.urlopen(req, timeout=self.timeout, label="embedder") as resp:
             body = json.loads(resp.read().decode("utf-8"))
         data = body.get("data") or []
         if len(data) != len(inputs):

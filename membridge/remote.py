@@ -22,6 +22,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from . import netutil
+
 from .auth import (
     authenticate,
     change_password,
@@ -557,13 +559,38 @@ def run_hub(
 class RemoteService:
     """Proxy with the same method surface as AgentSyncService."""
 
-    def __init__(self, base_url: str, token: str = "", timeout: float = 30.0):
+    #: Name fragments that mark a state-changing RPC.  Such calls are tried
+    #: once only: a timeout after the hub applied them would otherwise duplicate
+    #: writes.  Read-only RPCs are safe to retry on connection-phase failures.
+    _WRITE_FRAGMENTS = (
+        "write",
+        "add",
+        "update",
+        "delete",
+        "archive",
+        "restore",
+        "revert",
+        "install",
+        "save",
+        "set",
+        "edit",
+        "backup",
+        "maintain",
+        "feedback",
+        "create",
+    )
+
+    def __init__(self, base_url: str, token: str = "", timeout: float | None = None):
         self.base_url = base_url.rstrip("/")
         self.token = token
-        self.timeout = timeout
+        self.timeout = netutil.default_timeout() if timeout is None else float(timeout)
 
     def close(self) -> None:
         return None
+
+    def _retries_for(self, name: str) -> int:
+        lowered = name.lower()
+        return 1 if any(frag in lowered for frag in self._WRITE_FRAGMENTS) else 3
 
     def _call(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         payload = json.dumps({"method": name, "args": list(args), "kwargs": kwargs}, ensure_ascii=False).encode("utf-8")
@@ -578,7 +605,12 @@ class RemoteService:
             headers["Authorization"] = f"Bearer {self.token}"
         request = urllib.request.Request(self.base_url + "/rpc", data=payload, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with netutil.urlopen(
+                request,
+                timeout=self.timeout,
+                retries=self._retries_for(name),
+                label=f"remote:{name}",
+            ) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
