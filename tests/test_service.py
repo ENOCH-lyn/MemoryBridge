@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from membridge.service import AgentSyncService, GateError
 from membridge.seed import seed as seed_data
@@ -70,6 +72,27 @@ class ServiceTest(unittest.TestCase):
         second = self.svc.ensure_project("./project-a")
         self.assertEqual(first["id"], second["id"])
         self.assertEqual(first["key"], "name:project-a")
+
+    def test_project_path_keeps_caller_spelling_when_hub_cannot_see_it(self) -> None:
+        windows = "C:\\Users\\ENOCH\\Desktop\\dsh"
+        project = self.svc.ensure_project(windows)
+        self.assertEqual(project["path"], windows)
+        self.assertNotIn("/opt/", project["path"])
+        # Identity must not depend on how many times or in what spelling the
+        # same client path is announced.
+        again = self.svc.ensure_project(windows + "\\")
+        self.assertEqual(project["id"], again["id"])
+
+    def test_bootstrap_is_not_audited_by_default(self) -> None:
+        self.svc.bootstrap(project_path="project-a", client="test")
+        actions = [row["action"] for row in self.svc.audit_list(50)["items"]]
+        self.assertNotIn("bootstrap", actions)
+
+    def test_bootstrap_audit_can_be_opted_in(self) -> None:
+        with mock.patch.dict(os.environ, {"MEMBRIDGE_AUDIT_BOOTSTRAP": "1"}):
+            self.svc.bootstrap(project_path="project-a", client="test")
+        actions = [row["action"] for row in self.svc.audit_list(50)["items"]]
+        self.assertIn("bootstrap", actions)
 
     def test_project_key_uses_git_remote(self) -> None:
         with tempfile.TemporaryDirectory() as repo_dir:

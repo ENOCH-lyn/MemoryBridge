@@ -26,6 +26,11 @@ from .auth import ensure_default_admin
 from . import retrieval as R
 
 
+def _env_true(name: str) -> bool:
+    """Read a boolean-ish environment flag (``1/true/yes/on``)."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _content_hash(text: str) -> str:
     normalized = re.sub(r"[\W_]+", "", (text or "").lower(), flags=re.UNICODE)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:32]
@@ -383,11 +388,7 @@ class AgentSyncService:
         raw = (project_path or "").strip()
         if not raw:
             raise ValueError("project_path is required")
-        path_obj = Path(raw).expanduser()
-        try:
-            normalized = str(path_obj.resolve()) if path_obj.exists() or "/" in raw or "\\" in raw else raw
-        except OSError:
-            normalized = raw
+        normalized = self._normalize_project_path(raw)
         project_key = self._project_key(normalized, name)
         project_id = "proj_" + hashlib.sha1(project_key.encode("utf-8")).hexdigest()[:12]
         row = self.conn.execute("SELECT * FROM projects WHERE key = ?", (project_key,)).fetchone()
@@ -467,6 +468,25 @@ class AgentSyncService:
         if path.endswith(".git"):
             path = path[:-4]
         return f"git:{host.lower()}/{path.lower()}"
+
+    def _normalize_project_path(self, raw: str) -> str:
+        """Resolve only paths the hub can actually see.
+
+        ``Path.resolve()`` rewrites a non-existent path relative to the current
+        working directory.  A hub on Linux is routinely handed Windows drive
+        paths by remote clients, and it turned them into
+        ``/opt/membridge/app/C:\\Users\\...``: the stored ``path`` became wrong and
+        project identity started depending on how the hub process was started.
+        Keeping the caller's spelling is safe because the project key is derived
+        from the basename, which is unchanged either way.
+        """
+        expanded = str(Path(raw).expanduser())
+        try:
+            if Path(expanded).exists():
+                return str(Path(expanded).resolve())
+        except OSError:
+            pass
+        return expanded
 
     def _project_key(self, normalized: str, name: str | None = None) -> str:
         marker = Path(normalized) / ".membridge-project.json"
@@ -583,7 +603,13 @@ class AgentSyncService:
                 expires_at,
             ),
         )
-        self._audit("bootstrap", context_version, {"agent_id": resolved_agent, "client": client, "project_id": project["id"] if project else None})
+        # The sessions row above already records agent/project/expiry for this
+        # context, and clients legitimately retry bootstrap after a network
+        # hiccup, so one audit row per call mostly buries the real mutations
+        # (measured 2026-11-09: 59 of the newest 200 audit rows, many of them
+        # duplicates within seconds).  Opt back in with MEMBRIDGE_AUDIT_BOOTSTRAP=1.
+        if _env_true("MEMBRIDGE_AUDIT_BOOTSTRAP"):
+            self._audit("bootstrap", context_version, {"agent_id": resolved_agent, "client": client, "project_id": project["id"] if project else None})
         self.conn.commit()
         self._maybe_auto_maintain()
         self._maybe_auto_backup()
