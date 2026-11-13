@@ -53,6 +53,13 @@ SESSION_MAX_AGE = 7 * 24 * 3600
 LOGIN_WINDOW = 300
 LOGIN_LIMIT = 5
 
+#: Methods where the browser console acts as the single admin and therefore must
+#: not be boxed in by the agent-scope rules: the console already lists documents
+#: across every project (scope="all"), so opening or deleting one must not fail
+#: with "document is outside the current scope".  MCP clients (api/static tokens)
+#: are untouched — for them scope is the agent's recall boundary.
+ADMIN_SCOPE_METHODS = {"doc_read", "doc_delete"}
+
 ALLOWED_METHODS = {
     "bootstrap",
     "get_identity",
@@ -377,7 +384,8 @@ class HubHandler(BaseHTTPRequestHandler):
             return
         svc = self._service()
         try:
-            if not self._require_access(svc):
+            auth = self._require_access(svc)
+            if not auth:
                 return
             body = self._read_json()
             if body is None:
@@ -391,6 +399,8 @@ class HubHandler(BaseHTTPRequestHandler):
             if not isinstance(args, list) or not isinstance(kwargs, dict):
                 self._send_json(400, {"ok": False, "error": {"code": "BAD_REQUEST", "message": "args must be list, kwargs must be object"}})
                 return
+            if auth["kind"] == "session" and method in ADMIN_SCOPE_METHODS and "scope" not in kwargs:
+                kwargs = {**kwargs, "scope": "all"}
             result = getattr(svc, method)(*args, **kwargs)
             self._send_json(200, {"ok": True, "result": result})
         except GateError as exc:

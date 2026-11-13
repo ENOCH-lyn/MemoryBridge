@@ -2012,14 +2012,16 @@ class AgentSyncService:
             "content": row["content"],
         }
 
-    def doc_delete(self, context_version: str, document_id: str) -> dict[str, Any]:
+    def doc_delete(self, context_version: str, document_id: str, *, scope: str = "auto") -> dict[str, Any]:
         session = self.validate_context(context_version)
+        if scope not in {"auto", "project", "global", "all"}:
+            raise ValueError("scope must be auto, project, global or all")
         row = self.conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
         if row is None:
             row = self.conn.execute("SELECT * FROM documents WHERE path = ?", (document_id,)).fetchone()
         if row is None:
             raise ValueError(f"unknown document: {document_id}")
-        if row["project_id"] not in {session["project_id"], None}:
+        if not self._doc_scope_allows(row["project_id"], session["project_id"], scope):
             raise ValueError("document is outside the current project scope")
         self.conn.execute("DELETE FROM documents WHERE id = ?", (row["id"],))
         self._audit("doc.delete", row["id"], {"path": row["path"], "project_id": row["project_id"]})
