@@ -42,8 +42,11 @@ class MemoryWriteTest(unittest.TestCase):
         self.assertEqual(second["version"], 2)
         result = self.svc.memory_search(self.ctx, "SQLite")
         self.assertEqual(result["count"], 1)
-        self.assertIn("低并发", result["items"][0]["conditions"])
-        self.assertIsNotNone(result["items"][0]["rationale"])
+        # Search rows are compact; rationale/conditions come from memory_get.
+        self.assertNotIn("conditions", result["items"][0])
+        full = self.svc.memory_get(self.ctx, memory_id=result["items"][0]["id"])
+        self.assertIn("低并发", full["memory"]["conditions"])
+        self.assertIsNotNone(full["memory"]["rationale"])
 
     def test_global_preference_and_project_isolation(self) -> None:
         self.svc.memory_write(
@@ -58,7 +61,7 @@ class MemoryWriteTest(unittest.TestCase):
         other = self.svc.bootstrap(project_path="other", client="test")["context_version"]
         result = self.svc.memory_search(other, "commit")
         self.assertEqual(result["count"], 1)
-        self.assertIsNone(result["items"][0]["project_id"])
+        self.assertEqual(result["items"][0]["project"], "global")
         project_result = self.svc.memory_search(self.ctx, "SQLite")
         self.assertEqual(project_result["count"], 0)
 
@@ -124,12 +127,12 @@ class MemoryWriteTest(unittest.TestCase):
         self.assertEqual(beta_default["count"], 0)
         beta_all = self.svc.memory_search(beta["context_version"], "Alpha", scope="all")
         self.assertEqual(beta_all["count"], 1)
-        self.assertEqual(beta_all["items"][0]["project_name"], "alpha")
+        self.assertEqual(beta_all["items"][0]["project"], "name:alpha")
         beta_memories = self.svc.memory_list(beta["context_version"], scope="all")
         self.assertGreaterEqual(beta_memories["count"], 3)
         boot = self.svc.bootstrap(project_path="beta", client="test")
         self.assertTrue(any(m["topic"] == "preference.color" for m in boot["global_memories"]))
-        self.assertTrue(all(m["project_id"] is None for m in boot["global_memories"]))
+        self.assertEqual(set(boot["global_memories"][0]), {"id", "topic", "type", "content", "age_days"})
 
 
 if __name__ == "__main__":

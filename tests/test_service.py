@@ -25,9 +25,13 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(result["identity"]["name"], "默认")
         self.assertTrue(result["context_version"].startswith("ctx_"))
         self.assertEqual(result["project"]["name"], "demo")
-        self.assertIn("doc_add", result["capture_contract"]["required_tools"]["document"])
-        self.assertIn("before_final_answer", result["capture_contract"])
-        self.assertIn("next_actions", result)
+        self.assertIn("notice", result)
+        # The write policy is opt-in: clients that read initialize.instructions
+        # must not pay for it on every bootstrap.
+        self.assertNotIn("capture_contract", result)
+        policy = self.svc.bootstrap(project_path="demo", include=["policy"])
+        self.assertIn("doc_add", policy["policy"]["required_tools"]["document"])
+        self.assertIn("before_final_answer", policy["policy"])
 
     def test_gate_requires_bootstrap(self) -> None:
         with self.assertRaises(GateError) as ctx:
@@ -40,7 +44,7 @@ class ServiceTest(unittest.TestCase):
         result = self.svc.memory_search(ctx, "分页 cursor")
         self.assertEqual(result["count"], 1)
         self.assertIn("cursor", result["items"][0]["content"])
-        self.assertTrue(result["items"][0]["citation"].startswith("[mem:"))
+        self.assertTrue(result["items"][0]["id"].startswith("mem_"))
 
     def test_project_marker_overrides_basename(self) -> None:
         with tempfile.TemporaryDirectory() as folder:

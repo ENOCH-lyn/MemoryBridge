@@ -146,12 +146,15 @@ class HybridSearchTest(unittest.TestCase):
         self.assertGreaterEqual(result["count"], 1)
         self.assertEqual(result["items"][0]["topic"], "lesson.db.lock")
 
-    def test_scores_breakdown_and_usage_touch(self) -> None:
+    def test_score_and_usage_touch(self) -> None:
         result = self.svc.memory_search(self.ctx, "手机端布局", k=3)
         top = result["items"][0]
-        self.assertIn("lex_rank", top["scores"])
-        self.assertIn("salience", top["scores"])
-        self.assertIn("retrieval", result)
+        self.assertIn("score", top)
+        self.assertIn("age_days", top)
+        # The per-signal breakdown costs more than it explains; it is gone.
+        self.assertNotIn("scores", top)
+        self.assertNotIn("retrieval", result)
+        self.assertIn("strength", result)
         row = self.svc.conn.execute("SELECT hits, last_hit_at FROM memories WHERE id = ?", (top["id"],)).fetchone()
         self.assertGreaterEqual(row["hits"], 1)
         self.assertIsNotNone(row["last_hit_at"])

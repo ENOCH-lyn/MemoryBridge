@@ -1,9 +1,16 @@
 # MemoryBridge MVP 实现说明
 
-- 状态：v0.1（可运行）
+- 状态：v0.1（可运行；0.4.0 起 bootstrap/检索返回已瘦身，见文首注）
 - 日期：2026-10-21
 - 代码：`membridge/`
 - 测试：`tests/`
+
+> **2026-11-13（0.4.0）注**：本文是 2026-10-21 的 MVP 快照。bootstrap 默认 payload 已精简：
+> `projects` / `memory_map` / `recent_decisions` / `recent_lessons` / `capture_contract` 改为
+> `include=["projects"|"map"|"policy"]` 显式索取；记忆行只留 `{id, topic, type, content, age_days}`，
+> 细节用 `memory_get`；`memory_search` 增加 `strength` / `min_score` / `detail`。
+> 实测从 20446 字符（≈6100 token）降到 4752 字符（≈1720 token）。
+> 详见任务目录的 `docs/16-上下文注入瘦身-2026-11-13.md`。下文 §3–§5 的字段清单按 MVP 当时实现为准。
 
 ## 1. 目标与边界
 

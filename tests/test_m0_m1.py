@@ -101,20 +101,22 @@ class MapAndRelatedTest(unittest.TestCase):
         self.assertLessEqual(payload["chars"], 400)
         self.assertTrue(all(item["topic"] and item["line"] for item in payload["items"]))
 
-    def test_bootstrap_injects_map_and_notice(self) -> None:
+    def test_bootstrap_optional_sections(self) -> None:
         boot = self.svc.bootstrap(project_path="demo")
-        self.assertIn("memory_map", boot)
-        self.assertIn("memory_notice", boot)
-        self.assertGreaterEqual(len(boot["memory_map"]), 1)
-        total = sum(len(item["line"]) for item in boot["memory_map"])
+        self.assertIn("notice", boot)
+        # The catalogue is opt-in: bootstrap stays small by default.
+        self.assertNotIn("memory_map", boot)
+        with_map = self.svc.bootstrap(project_path="demo", include=["map"])
+        self.assertGreaterEqual(len(with_map["memory_map"]), 1)
+        total = sum(len(item["line"]) for item in with_map["memory_map"])
         self.assertLessEqual(total, 1400)
 
     def test_related_hints_present(self) -> None:
         result = self.svc.memory_search(self.ctx, "部署 端口", k=2)
-        self.assertIn("related", result)
-        for entry in result["related"]:
+        self.assertIn("strength", result)
+        for entry in result.get("related", []):
             self.assertIn("line", entry)
-            self.assertIn("citation", entry)
+            self.assertIn("id", entry)
 
 
 class SanitizeAndBackupTest(unittest.TestCase):

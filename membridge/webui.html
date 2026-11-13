@@ -559,8 +559,8 @@ function mcpSnippet(){
   return JSON.stringify({mcpServers:{membridge:{command:'membridge',args}}}, null, 2);
 }
 async function bootstrap(){
-  const data=await rpc('bootstrap',[],{client:'web'});
-  state.ctx=data.context_version; state.identity=data.identity; state.available=data.available||null; state.projects=data.projects||[]; state.globalMemories=data.global_memories||[]; state.projectMemories=data.project_memories||[];
+  const data=await rpc('bootstrap',[],{client:'web',include:['projects']});
+  state.ctx=data.context_version; state.identity=data.identity; state.available=data.available||null; state.projects=data.projects||[]; state.globalMemories=data.global_memories||[]; state.projectMemories=data.project_memories||[]; state.globalTotal=data.global_memories_total??null;
   populateProjectFilter();
   $('#ctxBadge').textContent='ctx '+state.ctx.slice(4,12);
   $('#ctxBadge').className='chip ok';
@@ -626,7 +626,7 @@ function renderOverview(){
   badgeMem.hidden=!active; badgeMem.textContent=active;
   const projects=state.projects||[];
   $('#ovProjectsList').innerHTML=projects.length?projects.slice(0,6).map(p=>`<div class="item"><div class="inline" style="justify-content:space-between"><b>${esc(p.name)}</b><button class="text-btn" data-action="delete-project" data-id="${esc(p.id)}">删除</button></div><div class="hint">${esc(p.path||'')}</div><div class="hint">${esc(p.key||'')} · ${esc(p.memories||0)} 记忆</div></div>`).join(''):'<div class="empty">还没有项目</div>';
-  $('#ovProjectCounts').textContent=`全局 ${ (state.globalMemories||[]).length } · 项目 ${ projects.reduce((sum,p)=>sum+Number(p.memories||0),0) }`;
+  $('#ovProjectCounts').textContent=`全局 ${ state.globalTotal ?? (state.globalMemories||[]).length } · 项目 ${ projects.reduce((sum,p)=>sum+Number(p.memories||0),0) }`;
   $('#ctxBadge').textContent=state.ctx?'ctx '+state.ctx.slice(4,12):'未 bootstrap';
   $('#ctxBadge').className='chip '+(state.ctx?'ok':'');
 }
@@ -653,7 +653,7 @@ async function loadMemories(){
   const f=scopeFilter(); const kwargs={scope:f.scope};
   if(f.projectId) kwargs.project_id=f.projectId;
   const data=q
-    ? await rpc('memory_search',[state.ctx,q],{...kwargs,k:30})
+    ? await rpc('memory_search',[state.ctx,q],{...kwargs,k:30,detail:'full'})
     : await rpc('memory_list',[state.ctx],{...kwargs,status:'active',limit:100});
   const items=data.items||[];
   state.memories=items;

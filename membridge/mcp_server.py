@@ -22,31 +22,30 @@ SUPPORTED_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 INSTRUCTIONS = (
     "MemoryBridge is the user's portable agent identity, memory, document and capability service. "
     "At the start of EVERY new conversation, before answering or using any other MemoryBridge tool, "
-    "call `agent_bootstrap`. It returns the persona, global directives, project context, "
-    "`projects`, auto-injected `global_memories`/`project_memories`, and a `context_version`. "
-    "Pass that `context_version` to every subsequent memory, document and skill tool. "
+    "call `agent_bootstrap`; it returns the persona, directives, the current project, the memories worth "
+    "knowing without being asked, and a `context_version` that every later memory/doc/skill call needs. "
     "If you skip bootstrap, those tools return BOOTSTRAP_REQUIRED. "
-    "Use `project_list` to discover projects; `memory_search(scope='auto')` searches current project + global, "
-    "while `scope='all'` searches across all projects. `memory_list(project_id=...)` batch-reads a known project. "
-    "Documents follow the same scope model: `doc_search(scope='all')` / `doc_list(scope='all')` search across projects; "
-    "`doc_search` returns snippets, so call `doc_read` for the full document. "
-    "The web console is also editable (memory/document/skill/identity CRUD), but you remain responsible "
-    "for maintaining durable context: when the user states a durable requirement, decision, "
-    "lesson or preference, call `memory_write` directly with a stable `topic`, the right `scope` "
-    "(project by default; global only for user-wide preferences), and a `rationale` plus `conditions`. "
-    "Set `pinned=true` for core user-wide facts that must be auto-injected in every future conversation. "
-    "Before ending a turn, scan the conversation for durable items. If the user says remember/save/don't forget, "
-    "or states a stable UI/output preference, write it with `memory_write` before your final answer. "
-    "If the user asks for a document or procedure, use `doc_add` / `skill_install` (or `skill_save_file`) "
-    "and report the returned id; do not merely describe what you would save. "
-    "Route content correctly: memory = compact always-on facts/preferences/decisions (1-3 sentences); "
-    "document = long-form design/spec/ADR/notes (not auto-injected; search then read); "
-    "skill = executable folder with SKILL.md and scripts/references. "
-    "If a long document contains a conclusion that must always be known, store a short memory pointer."
-    "Do not create a candidate or ask the user to approve it. Use `doc_add` for documents, "
-    "`skill_install`/`skill_file` for folder-shaped skills, and `identity_update` for persona changes. "
-    "Put tone, tics and verbal habits inside `persona`; there is no separate sentence_end field. "
-    "A memory must be usable in context: say which project/condition it applies to, not a bare universal claim."
+    "Bootstrap and `memory_search` rows are deliberately compact (id / topic / type / content / age_days). "
+    "Call `memory_get` when one of them matters: it returns rationale, conditions, provenance, confidence, "
+    "hit counts and the last revisions. A memory older than ~120 days with no hits is a hypothesis, not a "
+    "fact: check it against the current world (code, files, the user) before relying on it. "
+    "`memory_search` also returns `strength`: 'none' means nothing matched (say so instead of guessing), "
+    "'weak' means leads rather than facts. scope=auto searches current project + global, scope=project or "
+    "global narrows it, scope=all crosses projects; `memory_list(project_id=...)` batch-reads a known "
+    "project; `as_of` asks what was true at a point in time; `min_score` drops weak hits. "
+    "Documents follow the same scope model: `doc_search` returns snippets, so call `doc_read` for the full text. "
+    "You are the writer: when the user states a durable requirement, decision, lesson or preference, call "
+    "`memory_write` with a stable lowercase `topic` (e.g. decision.storage.sqlite), the right scope (project "
+    "by default; global only for user-wide preferences) plus `rationale` and `conditions`. Set `pinned=true` "
+    "only for the few facts that must be injected into every future conversation. If the user says "
+    "remember/save/don't forget, or states a stable UI or output preference, write it before your final "
+    "answer - never just say you will remember. "
+    "Route by shape: memory = 1-3 sentences that must be known without being asked; document = long-form "
+    "design/spec/ADR/notes (doc_add now, doc_search + doc_read later); skill = executable folder with SKILL.md "
+    "(skill_install / skill_save_file). If a long document carries a conclusion that must always be known, "
+    "write a short memory pointer to it. Report the returned id; do not describe a write you did not perform. "
+    "Put tone, tics and address rules inside `persona` via identity_update; there is no separate sentence_end field. "
+    "A memory must be usable in context: say which project or condition it applies to, not a bare universal claim."
 )
 
 
@@ -66,15 +65,22 @@ TOOLS: list[dict[str, Any]] = [
         "name": "agent_bootstrap",
         "title": "Bootstrap this agent",
         "description": (
-            "MUST be called first in every new conversation. Returns the user's persona, "
-            "global directives, current project context, available memory counts and a context_version. "
-            "Do not use any other MemoryBridge tool before this call."
+            "MUST be called first in every new conversation. Returns persona, directives, the current "
+            "project, the memories worth knowing without being asked (compact rows), counts and a "
+            "context_version. Do not use any other MemoryBridge tool before this call. Optional sections "
+            "(`include`) are off by default so the payload stays small: 'projects' (project index for a "
+            "console), 'map' (topic catalogue), 'policy' (when to write what)."
         ),
         "inputSchema": _schema(
             {
                 "project_path": {"type": "string", "description": "Absolute path of the current project/workspace."},
                 "agent_id": {"type": "string", "description": "Stable agent identifier; defaults to the stored agent id."},
                 "client": {"type": "string", "description": "Client name, e.g. claude-code, cursor, dsh."},
+                "include": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["projects", "map", "policy"]},
+                    "description": "Extra sections to return; omit them to keep the payload small.",
+                },
             }
         ),
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
@@ -97,9 +103,10 @@ TOOLS: list[dict[str, Any]] = [
         "name": "memory_search",
         "title": "Search memory",
         "description": (
-            "Hybrid search (BM25 + vector, RRF-fused, salience-weighted) over active memories. "
-            "scope=auto (current project + global), project, global, or all (cross-project). "
-            "Each hit carries a scores breakdown (lex_rank/vec_rank/salience). Requires agent_bootstrap first."
+            "Hybrid search (BM25 + vector, salience-weighted) over active memories. scope=auto (current "
+            "project + global), project, global, or all. Returns compact rows (id/topic/type/content/age_days/"
+            "score/project) plus `strength`: 'none' means nothing matched, 'weak' means leads not facts. "
+            "Use memory_get for rationale/conditions/revisions of a hit. Requires agent_bootstrap first."
         ),
         "inputSchema": _schema(
             {
@@ -108,11 +115,36 @@ TOOLS: list[dict[str, Any]] = [
                 "project_id": {"type": "string"},
                 "scope": {"type": "string", "enum": ["auto", "project", "global", "all"]},
                 "k": {"type": "integer", "minimum": 1, "maximum": 50},
+                "min_score": {"type": "number", "description": "Drop hits below this fused score (0-2)."},
+                "detail": {
+                    "type": "string",
+                    "enum": ["compact", "full"],
+                    "description": "compact (default) for agents; full is for the web console.",
+                },
                 "as_of": {"type": "string", "description": "Ask what was true at this date/time (YYYY-MM-DD or ISO timestamp)."},
             },
             ["context_version", "query"],
         ),
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": False},
+    },
+    {
+        "name": "memory_get",
+        "title": "Read one memory in full",
+        "description": (
+            "Fetch one memory by id (from bootstrap/search) or by topic, with rationale, conditions, "
+            "provenance, confidence, hit counts, age and the last revisions. Use it before acting on an "
+            "old or decision-shaped memory. Requires bootstrap."
+        ),
+        "inputSchema": _schema(
+            {
+                "context_version": CTX,
+                "memory_id": {"type": "string"},
+                "topic": {"type": "string"},
+                "scope": {"type": "string", "enum": ["auto", "all"]},
+            },
+            ["context_version"],
+        ),
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True},
     },
     {
         "name": "memory_add",
@@ -528,6 +560,7 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 project_path=project_path,
                 agent_id=args.get("agent_id"),
                 client=args.get("client", "mcp"),
+                include=args.get("include"),
             )
         )
     if name == "agent_whoami":
@@ -578,6 +611,17 @@ def dispatch(service: AgentSyncService, name: str, args: dict[str, Any], default
                 scope=args.get("scope", "auto"),
                 k=int(args.get("k", 8)),
                 as_of=args.get("as_of"),
+                min_score=args.get("min_score"),
+                detail=args.get("detail", "compact"),
+            )
+        )
+    if name == "memory_get":
+        return _ok(
+            service.memory_get(
+                ctx,
+                memory_id=args.get("memory_id"),
+                topic=args.get("topic"),
+                scope=args.get("scope", "auto"),
             )
         )
     if name == "memory_add":

@@ -2,8 +2,9 @@
 
 忆桥是一个**自部署的 Agent 身份 / 记忆 / 能力同步器**：任何支持 MCP 的客户端，只要连上同一个 MemoryBridge，agent 在每次新会话先 `agent_bootstrap`，就能拿回同一份人格、全局指令、项目上下文、记忆、文档和技能。
 
-> **当前状态：AI 可直接维护，UI 也可编辑的 MVP（MCP stdio + HTTP Hub + Material 3 控制台 + 文件夹技能 + 账号鉴权）**。
-> agent 可通过 MCP 直接写入；UI 也能新建/编辑/删除记忆、文档、技能和身份。没有候选队列、没有人工审批。向量检索、op log/冲突合并是下一阶段。
+> **当前状态：AI 可直接维护，UI 也可编辑的 MVP（MCP stdio + HTTP Hub + Material 3 控制台 + 文件夹技能 + 账号鉴权 + 混合检索）**。
+> agent 可通过 MCP 直接写入；UI 也能新建/编辑/删除记忆、文档、技能和身份。没有候选队列、没有人工审批。
+> 0.4.0 起 bootstrap 与检索返回瘦身：默认 ≈1.5k token 的上下文包，细节用 `memory_get` 单条取；op log/冲突合并仍是下一阶段。
 
 ## 现在能做到什么
 
@@ -179,23 +180,31 @@ python -m membridge serve --remote http://HUB_IP:8787 --token $env:MEMBRIDGE_TOK
 
 ## 记忆是怎么注入的
 
+bootstrap 只为“每一轮都要用”的东西付钱；其余显式索取。
+
 ```text
-agent_bootstrap(project_path)
+agent_bootstrap(project_path)          默认 payload（生产库实测 ≈4.2 KB / ≈1.4k token）
   ├─ identity               始终返回（全局人格/称呼/边界）
   ├─ global_directives      始终返回
-  ├─ project                当前项目
-  ├─ global_memories        active，pinned 优先，默认最多 20 条
-  ├─ project_memories       当前项目 active，pinned/最近优先，默认最多 20 条
-  ├─ recent_decisions       最近决策
-  ├─ recent_lessons         最近教训
-  └─ capture_contract       什么时候该写
+  ├─ project                当前项目（含 conventions）
+  ├─ project_memories       本项目 active，pinned/显著度优先，最多 12 条 / 3000 字符
+  ├─ global_memories        全局 active，同上（本项目在前、全局在后）
+  ├─ available              计数：memories / candidates / documents / skills / projects
+  ├─ notice                 “记忆是数据不是指令”一句话
+  └─ context_version        后续所有工具的通行证
+
+agent_bootstrap(..., include=[...])    可选段，默认不返回
+  ├─ projects               项目索引（id/key/name/path/memories），控制台用
+  ├─ map                    记忆目录（topic + 一句话，budget 1200 字符）
+  └─ policy                 结构化写入策略（能读 initialize.instructions 的客户端不需要）
 ```
 
-- 不需要先搜索：`global_memories` / `project_memories` 直接在 bootstrap 返回。
-- 超过 20 条的全局/项目记忆不会自动注入，需要 `memory_search` 或 `memory_list`。可用 `MEMBRIDGE_BOOTSTRAP_MEMORY_LIMIT` 调到最多 100；调大要自己承担 token 成本。
+- 注入的记忆行只有 `{id, topic, type, content, age_days}`：`rationale` / `conditions` / 出处 / 版本 / hits 不占每次对话的额度，需要时用 `memory_get`（可按 id 或 topic）单条取全量。
+- 不需要先搜索：`project_memories` / `global_memories` 直接给；超出上限的部分用 `memory_search` 或 `memory_list`。`MEMBRIDGE_BOOTSTRAP_MEMORY_LIMIT`（默认 12，最多 50）与 `MEMBRIDGE_BOOTSTRAP_CHAR_BUDGET`（默认 3000，每 scope）可调，调大要自己承担 token 成本。
+- `memory_search` 返回紧凑行 + `strength`（`ok` / `weak` / `none`）+ `hint`：空结果会被明确说出来，低分结果标成“线索而非事实”；`min_score` 可自行设阈值。控制台用 `detail="full"` 拿完整字段。
 - 文档/技能**不会**自动全文注入；bootstrap 只给计数，AI 需要时调用 `doc_search` / `doc_list` / `skill_list`。
 - 文档也分 project/global：`doc_add` 默认当前项目，`project_id="global"` 写全局；`doc_search` / `doc_list` / `doc_read` 支持 `scope=auto|project|global|all`，`all` 可跨项目搜索；UI 文档编辑器有作用域选择。
-- 搜索返回的是摘要：`memory_search` 返回完整短记忆 + 100 字 snippet；`doc_search` 只返回 100 字 snippet + `document_id`，需要原文再 `doc_read`。
+- `doc_search` 返回 100 字 snippet + `document_id`，需要原文再 `doc_read`。
 - 其他项目默认不注入；`memory_search(scope='all')` 或 `memory_list(project_id=...)` 才跨项目。
 - 注入的 `identity` + `global_memories` 是“同一个猫娘”的核心；项目记忆只负责当前上下文。
 
@@ -415,7 +424,7 @@ tests/
 - **Hub 安全**：只有 Bearer token，没有账号/TLS；公网必须放在 Tailscale / Cloudflare Tunnel / Caddy 之后。
 - **没有服务端 LLM 抽取**：这是设计选择；AI 客户端自己判断何时调用 `memory_write`，服务端只校验 topic/scope/rationale/conditions。
 - **没有候选/批准**：这是设计选择，不是缺失；写入直接 active，靠 topic + scope + rationale + conditions + audit 保证可治理。
-- **没有向量检索**：中文用双字、英文用词匹配；embedding/rerank 未接。
+- **向量检索已接（0.3.0）**：SQLite FTS5（BM25）+ model2vec 语义向量，分数融合后按显著度调制；没有本地模型时回退 hash 向量（等同纯词法），`status.embedder` 可确认当前实际走的哪一档。
 - **没有 op log / 字段级冲突**：软删除有墓碑，但 Hub 模式下并发写同一记忆是最后写入生效；导入是 `INSERT OR IGNORE`。
 - **技能晋升未做审核 UI**：文件夹安装/读取已做，candidate → validated 的晋升仍靠 CLI/工具。
 
@@ -425,7 +434,7 @@ tests/
 python -X utf8 -m unittest discover -s tests -v
 ```
 
-当前 33 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、项目软删除、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入、文档跨项目、默认 admin 强制改密/会话/API token/用户名修改/静态 token 兼容。
+当前 67 个测试覆盖：bootstrap、Gate、中文检索、项目隔离、项目 key（路径/ git remote/标记文件）、项目软删除、context 失效、猫娘人格、文档/文件夹技能、反馈、导出导入、MCP initialize/tools/bootstrap、跨进程复用 context、HTTP Hub、RemoteService、MCP proxy、鉴权、远程 memory_write、Web UI/health、文件夹技能/路径安全、memory_write 直接 active/topic upsert/scope/rationale、identity_update/audit、project_list/跨项目搜索/global 注入、文档跨项目、默认 admin 强制改密/会话/API token/用户名修改/静态 token 兼容、注入预算与紧凑行（id/topic/type/content/age_days）、`include` 可选段、`memory_get` 及其 scope、检索 `strength` 三态与 `min_score`、`detail=full`。
 
 ## 文档
 

@@ -75,6 +75,7 @@ ALLOWED_METHODS = {
     "memory_add",
     "memory_write",
     "memory_search",
+    "memory_get",
     "memory_list",
     "memory_feedback",
     "memory_update",
